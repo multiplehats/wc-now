@@ -246,6 +246,7 @@ export function generateWooCommerceBlueprint(
 	const blueprint: Blueprint = {
 		$schema: "https://playground.wordpress.net/blueprint-schema.json",
 		landingPage,
+		login: true,
 		preferredVersions: {
 			php,
 			wp,
@@ -430,11 +431,239 @@ if (WP_DEBUG) {
 		// Import default WooCommerce sample data
 		const steps = blueprint.steps || [];
 		steps.push({
-			step: "importWxr",
-			file: {
-				resource: "url",
-				url: "https://raw.githubusercontent.com/woocommerce/woocommerce/trunk/plugins/woocommerce/sample-data/sample_products.xml",
-			},
+			step: "runPHP",
+			code: `<?php
+// This script creates sample WooCommerce products without requiring WXR import
+// It runs after WooCommerce is activated and ready
+
+// Ensure WooCommerce is active
+if (!class_exists('WC_Product')) {
+    echo 'WooCommerce is not active. Skipping product creation.';
+    exit(0);
+}
+
+// Load required WordPress functions for media handling
+require_once(ABSPATH . 'wp-admin/includes/media.php');
+require_once(ABSPATH . 'wp-admin/includes/file.php');
+require_once(ABSPATH . 'wp-admin/includes/image.php');
+
+// Helper function to download and attach image to product
+function attach_product_thumbnail($image_url, $product_id, $filename = '') {
+    if (empty($image_url)) {
+        return false;
+    }
+
+    // Download the image
+    $tmp = download_url($image_url);
+    if (is_wp_error($tmp)) {
+        return false;
+    }
+
+    // Set up file array
+    $file_array = array(
+        'name' => $filename ?: basename($image_url),
+        'tmp_name' => $tmp
+    );
+
+    // If filename doesn't have an extension, add one based on mime type
+    if (!preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $file_array['name'])) {
+        $file_array['name'] = $file_array['name'] . '.jpg';
+    }
+
+    // Upload the image and attach it to the product
+    $attachment_id = media_handle_sideload($file_array, $product_id);
+
+    // Clean up temp file
+    @unlink($tmp);
+
+    if (is_wp_error($attachment_id)) {
+        return false;
+    }
+
+    // Set as product thumbnail
+    set_post_thumbnail($product_id, $attachment_id);
+
+    return $attachment_id;
+}
+
+// Sample product data
+$sample_products = array(
+    array(
+        'name' => 'Premium Quality T-Shirt',
+        'description' => 'This premium quality t-shirt is made from 100% organic cotton. Comfortable, durable, and stylish.',
+        'short_description' => 'Comfortable organic cotton t-shirt',
+        'regular_price' => '29.99',
+        'sale_price' => '24.99',
+        'sku' => 'TSHIRT-001',
+        'stock_status' => 'instock',
+        'categories' => array('Clothing', 'T-Shirts'),
+        'image_url' => 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800',
+        'image_name' => 'premium-tshirt.jpg'
+    ),
+    array(
+        'name' => 'Wireless Bluetooth Headphones',
+        'description' => 'Experience crystal-clear audio with these premium wireless Bluetooth headphones. Features noise cancellation and 30-hour battery life.',
+        'short_description' => 'Premium wireless headphones with noise cancellation',
+        'regular_price' => '149.99',
+        'sale_price' => '119.99',
+        'sku' => 'HEADPHONES-001',
+        'stock_status' => 'instock',
+        'categories' => array('Electronics', 'Audio'),
+        'image_url' => 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800',
+        'image_name' => 'wireless-headphones.jpg'
+    ),
+    array(
+        'name' => 'Organic Coffee Beans - 1kg',
+        'description' => 'Premium organic coffee beans sourced from sustainable farms. Medium roast with notes of chocolate and caramel.',
+        'short_description' => 'Premium organic coffee beans',
+        'regular_price' => '34.99',
+        'sale_price' => '',
+        'sku' => 'COFFEE-001',
+        'stock_status' => 'instock',
+        'categories' => array('Food & Beverage', 'Coffee'),
+        'image_url' => 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=800',
+        'image_name' => 'organic-coffee-beans.jpg'
+    ),
+    array(
+        'name' => 'Yoga Mat - Extra Thick',
+        'description' => 'Professional-grade yoga mat with extra thickness for maximum comfort. Non-slip surface and eco-friendly materials.',
+        'short_description' => 'Extra thick professional yoga mat',
+        'regular_price' => '49.99',
+        'sale_price' => '39.99',
+        'sku' => 'YOGA-MAT-001',
+        'stock_status' => 'instock',
+        'categories' => array('Sports & Fitness', 'Yoga'),
+        'image_url' => 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=800',
+        'image_name' => 'yoga-mat.jpg'
+    ),
+    array(
+        'name' => 'Stainless Steel Water Bottle',
+        'description' => 'Keep your drinks cold for 24 hours or hot for 12 hours with this premium stainless steel water bottle.',
+        'short_description' => 'Insulated stainless steel water bottle',
+        'regular_price' => '24.99',
+        'sale_price' => '',
+        'sku' => 'BOTTLE-001',
+        'stock_status' => 'instock',
+        'categories' => array('Home & Kitchen', 'Drinkware'),
+        'image_url' => 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=800',
+        'image_name' => 'water-bottle.jpg'
+    ),
+    array(
+        'name' => 'Leather Wallet - RFID Protected',
+        'description' => 'Genuine leather wallet with RFID protection. Multiple card slots and bill compartments.',
+        'short_description' => 'RFID protected leather wallet',
+        'regular_price' => '59.99',
+        'sale_price' => '49.99',
+        'sku' => 'WALLET-001',
+        'stock_status' => 'instock',
+        'categories' => array('Accessories', 'Wallets'),
+        'image_url' => 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=800',
+        'image_name' => 'leather-wallet.jpg'
+    )
+);
+
+// Create product categories first
+$default_categories = array(
+    'Clothing' => 'Fashion and apparel',
+    'Electronics' => 'Electronic devices and accessories',
+    'Food & Beverage' => 'Food and drink products',
+    'Sports & Fitness' => 'Sports equipment and fitness gear',
+    'Home & Kitchen' => 'Home and kitchen essentials',
+    'Accessories' => 'Fashion and tech accessories',
+    'T-Shirts' => 'Comfortable t-shirts',
+    'Audio' => 'Audio equipment',
+    'Coffee' => 'Coffee products',
+    'Yoga' => 'Yoga equipment',
+    'Drinkware' => 'Bottles and cups',
+    'Wallets' => 'Wallets and cardholders'
+);
+
+foreach ($default_categories as $name => $description) {
+    if (!term_exists($name, 'product_cat')) {
+        wp_insert_term($name, 'product_cat', array(
+            'description' => $description
+        ));
+    }
+}
+
+$created_count = 0;
+$failed_count = 0;
+$images_attached = 0;
+
+foreach ($sample_products as $product_data) {
+    try {
+        // Create product
+        $product = new WC_Product_Simple();
+
+        $product->set_name($product_data['name']);
+        $product->set_description($product_data['description']);
+        $product->set_short_description($product_data['short_description']);
+        $product->set_regular_price($product_data['regular_price']);
+
+        if (!empty($product_data['sale_price'])) {
+            $product->set_sale_price($product_data['sale_price']);
+        }
+
+        $product->set_sku($product_data['sku']);
+        $product->set_stock_status($product_data['stock_status']);
+        $product->set_manage_stock(false);
+        $product->set_status('publish');
+
+        // Set categories
+        $category_ids = array();
+        foreach ($product_data['categories'] as $category_name) {
+            $term = get_term_by('name', $category_name, 'product_cat');
+            if (!$term) {
+                $term_data = wp_insert_term($category_name, 'product_cat');
+                if (!is_wp_error($term_data)) {
+                    $category_ids[] = $term_data['term_id'];
+                }
+            } else {
+                $category_ids[] = $term->term_id;
+            }
+        }
+        $product->set_category_ids($category_ids);
+
+        // Save product first to get ID
+        $product_id = $product->save();
+
+        if ($product_id) {
+            $created_count++;
+
+            // Download and attach the image
+            if (!empty($product_data['image_url'])) {
+                $attachment_id = attach_product_thumbnail(
+                    $product_data['image_url'],
+                    $product_id,
+                    $product_data['image_name']
+                );
+
+                if ($attachment_id) {
+                    $images_attached++;
+
+                    // Also set it as the product image in WooCommerce
+                    $product = wc_get_product($product_id);
+                    $product->set_image_id($attachment_id);
+                    $product->save();
+                }
+            }
+        }
+
+    } catch (Exception $e) {
+        $failed_count++;
+        error_log('Failed to create product: ' . $e->getMessage());
+    }
+}
+
+echo "Sample product import completed. Created $created_count products with $images_attached images attached.";
+
+if ($failed_count > 0) {
+    echo " Failed to create $failed_count products.";
+}
+
+// Flush rewrite rules to ensure product permalinks work
+flush_rewrite_rules();
+?>`,
 		});
 		blueprint.steps = steps;
 	}
