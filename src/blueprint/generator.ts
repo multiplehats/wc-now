@@ -68,7 +68,17 @@ function generateProductImportScript(products: ProductImport[]): string {
 	return `<?php
 // Ensure WordPress is loaded
 if (!defined('ABSPATH')) {
-    require_once('/wordpress/wp-load.php');
+    // Try to load WordPress - this handles different environments
+    if (file_exists('/wordpress/wp-load.php')) {
+        require_once('/wordpress/wp-load.php');
+    } elseif (file_exists(dirname(__FILE__) . '/../../wp-load.php')) {
+        require_once(dirname(__FILE__) . '/../../wp-load.php');
+    } elseif (file_exists(dirname(__FILE__) . '/../../../wp-load.php')) {
+        require_once(dirname(__FILE__) . '/../../../wp-load.php');
+    } else {
+        error_log('Could not find wp-load.php');
+        exit(1);
+    }
 }
 
 // Wait for WooCommerce to be fully loaded
@@ -287,10 +297,15 @@ export function generateWooCommerceBlueprint(
 				step: "activatePlugin" as const,
 				pluginPath: `${plugin}/${plugin}.php`,
 			})),
+			// Create mu-plugins directory first
+			{
+				step: "mkdir",
+				path: "/wp-content/mu-plugins",
+			},
 			// Set up pretty permalinks
 			{
 				step: "writeFile",
-				path: "/wordpress/wp-content/mu-plugins/rewrite.php",
+				path: "/wp-content/mu-plugins/rewrite.php",
 				data: `<?php
 /* Use pretty permalinks */
 add_action( 'after_setup_theme', function() {
@@ -369,16 +384,16 @@ add_action( 'after_setup_theme', function() {
 		steps.push(
 			{
 				step: "writeFile",
-				path: "/wordpress/wp-content/mu-plugins/import-products.php",
+				path: "/wp-content/mu-plugins/import-products.php",
 				data: generateProductImportScript(products),
 			},
 			{
 				step: "runPHP",
-				code: `<?php require_once('/wordpress/wp-content/mu-plugins/import-products.php'); ?>`,
+				code: `<?php require_once(ABSPATH . 'wp-content/mu-plugins/import-products.php'); ?>`,
 			},
 			{
 				step: "runPHP",
-				code: `<?php unlink('/wordpress/wp-content/mu-plugins/import-products.php'); ?>`,
+				code: `<?php unlink(ABSPATH . 'wp-content/mu-plugins/import-products.php'); ?>`,
 			},
 		);
 		blueprint.steps = steps;
@@ -406,7 +421,7 @@ add_action( 'after_setup_theme', function() {
 	const steps = blueprint.steps || [];
 	steps.push({
 		step: "writeFile",
-		path: "/wordpress/wp-content/mu-plugins/playground-helpers.php",
+		path: "/wp-content/mu-plugins/playground-helpers.php",
 		data: `<?php
 /**
  * WordPress Playground Development Helpers
