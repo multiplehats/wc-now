@@ -21,8 +21,8 @@ describe("Blueprint Generator", () => {
 		const wcPlugin = blueprint.steps?.find(
 			(step) =>
 				step.step === "installPlugin" &&
-				"pluginZipFile" in step &&
-				step.pluginZipFile?.slug === "woocommerce",
+				"pluginData" in step &&
+				step.pluginData?.slug === "woocommerce",
 		);
 		expect(wcPlugin).toBeDefined();
 
@@ -62,8 +62,8 @@ describe("Blueprint Generator", () => {
 		const akismetPlugin = blueprint.steps?.find(
 			(step) =>
 				step.step === "installPlugin" &&
-				"pluginZipFile" in step &&
-				step.pluginZipFile?.slug === "akismet",
+				"pluginData" in step &&
+				step.pluginData?.slug === "akismet",
 		);
 		expect(akismetPlugin).toBeDefined();
 	});

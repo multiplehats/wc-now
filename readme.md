@@ -40,7 +40,6 @@ This will:
 - Install and activate WooCommerce
 - Configure WooCommerce with sensible defaults
 - Import sample products
-- Install Query Monitor for debugging
 - Set up pretty permalinks
 - Enable debug mode
 
@@ -122,7 +121,6 @@ All wp-now options are also supported:
 ### Included Plugins
 
 - **WooCommerce** - The core e-commerce plugin
-- **Query Monitor** - Debugging and performance monitoring
 
 ### WooCommerce Settings
 

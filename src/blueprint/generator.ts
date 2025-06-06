@@ -92,47 +92,74 @@ require_once(ABSPATH . 'wp-admin/includes/media.php');
 require_once(ABSPATH . 'wp-admin/includes/file.php');
 require_once(ABSPATH . 'wp-admin/includes/image.php');
 
-// Function to download and attach image to product
-function attach_product_image($image_url, $product_id, $set_as_featured = true) {
+// Helper function to download and attach image to product
+function attach_product_thumbnail($image_url, $product_id, $filename = '') {
     if (empty($image_url)) {
         return false;
     }
 
-    // Download image from URL
+    // Try to download the image
     $tmp = download_url($image_url);
 
+    // If download_url fails, try using curl as fallback
     if (is_wp_error($tmp)) {
-        error_log('Failed to download image: ' . $tmp->get_error_message());
-        return false;
-    }
+        error_log('download_url failed for ' . $image_url . ': ' . $tmp->get_error_message());
 
-    // Get the filename from the URL
-    $file_array = array();
-    $file_array['name'] = basename($image_url);
-    $file_array['tmp_name'] = $tmp;
+        // Try curl as fallback
+        if (function_exists('curl_init')) {
+            $tmp_file = wp_tempnam($filename);
+            $ch = curl_init($image_url);
+            $fp = fopen($tmp_file, 'wb');
 
-    // If the URL doesn't have a proper extension, try to determine it
-    if (!preg_match('/\\.(jpg|jpeg|png|gif|webp)$/i', $file_array['name'])) {
-        $file_info = wp_check_filetype_and_ext($tmp, $file_array['name']);
-        if ($file_info['ext']) {
-            $file_array['name'] = 'product-image-' . $product_id . '.' . $file_info['ext'];
+            curl_setopt($ch, CURLOPT_FILE, $fp);
+            curl_setopt($ch, CURLOPT_HEADER, 0);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+
+            $result = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            fclose($fp);
+
+            if ($result === false || $http_code !== 200) {
+                @unlink($tmp_file);
+                error_log('Curl download failed for ' . $image_url);
+                return false;
+            }
+
+            $tmp = $tmp_file;
+        } else {
+            error_log('No curl available, skipping image download');
+            return false;
         }
     }
 
-    // Upload the image
+    // Set up file array
+    $file_array = array(
+        'name' => $filename ?: basename($image_url),
+        'tmp_name' => $tmp
+    );
+
+    // If filename doesn't have an extension, add one based on mime type
+    if (!preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $file_array['name'])) {
+        $file_array['name'] = $file_array['name'] . '.jpg';
+    }
+
+    // Upload the image and attach it to the product
     $attachment_id = media_handle_sideload($file_array, $product_id);
 
-    // Check for errors
+    // Clean up temp file
+    @unlink($tmp);
+
     if (is_wp_error($attachment_id)) {
-        @unlink($file_array['tmp_name']);
         error_log('Failed to create attachment: ' . $attachment_id->get_error_message());
         return false;
     }
 
-    // Set as featured image if requested
-    if ($set_as_featured) {
-        set_post_thumbnail($product_id, $attachment_id);
-    }
+    // Set as product thumbnail
+    set_post_thumbnail($product_id, $attachment_id);
 
     return $attachment_id;
 }
@@ -194,7 +221,7 @@ foreach ($products_data as $product_data) {
                     if (empty($image_url)) continue;
 
                     // Set first image as featured, others as gallery
-                    $attachment_id = attach_product_image($image_url, $product_id, $is_first);
+                    $attachment_id = attach_product_thumbnail($image_url, $product_id, $is_first ? 'product-featured.jpg' : 'product-gallery.jpg');
 
                     if ($attachment_id && !$is_first) {
                         $gallery_ids[] = $attachment_id;
@@ -256,26 +283,56 @@ export function generateWooCommerceBlueprint(
 			networking: true,
 		},
 		steps: [
+			// Ensure WordPress is properly initialized
+			{
+				step: "runPHP",
+				code: `<?php
+// This ensures WordPress core is fully loaded before we proceed
+// with plugin installations and activations
+
+// Load WordPress if not already loaded
+if (!defined('ABSPATH')) {
+    if (file_exists('/wordpress/wp-load.php')) {
+        require_once '/wordpress/wp-load.php';
+    } else {
+        echo "WordPress not found at expected location.";
+        exit(1);
+    }
+}
+
+// Verify database connection
+global $wpdb;
+if (!$wpdb->check_connection()) {
+    echo "Database connection failed.";
+    exit(1);
+}
+
+// Ensure basic WordPress tables exist
+$required_tables = ['posts', 'users', 'options', 'terms', 'term_taxonomy', 'term_relationships'];
+foreach ($required_tables as $table) {
+    $table_name = $wpdb->prefix . $table;
+    $result = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
+    if (!$result) {
+        echo "Required table $table_name is missing.";
+        exit(1);
+    }
+}
+
+echo "WordPress core initialized and database verified.";
+?>`,
+			},
 			// Install WooCommerce
 			{
 				step: "installPlugin",
-				pluginZipFile: {
+				pluginData: {
 					resource: "wordpress.org/plugins",
 					slug: "woocommerce",
-				},
-			},
-			// Install additional useful plugins for development
-			{
-				step: "installPlugin",
-				pluginZipFile: {
-					resource: "wordpress.org/plugins",
-					slug: "query-monitor",
 				},
 			},
 			// Install any additional plugins
 			...additionalPlugins.map((plugin) => ({
 				step: "installPlugin" as const,
-				pluginZipFile: {
+				pluginData: {
 					resource: "wordpress.org/plugins" as const,
 					slug: plugin,
 				},
@@ -285,24 +342,20 @@ export function generateWooCommerceBlueprint(
 				step: "activatePlugin",
 				pluginPath: "woocommerce/woocommerce.php",
 			},
-			{
-				step: "activatePlugin",
-				pluginPath: "query-monitor/query-monitor.php",
-			},
 			// Activate additional plugins
 			...additionalPlugins.map((plugin) => ({
 				step: "activatePlugin" as const,
 				pluginPath: `${plugin}/${plugin}.php`,
 			})),
-			// Create mu-plugins directory first
+			// Create mu-plugins directory
 			{
 				step: "mkdir",
-				path: "/wp-content/mu-plugins",
+				path: "/wordpress/wp-content/mu-plugins",
 			},
 			// Set up pretty permalinks
 			{
 				step: "writeFile",
-				path: "/wp-content/mu-plugins/rewrite.php",
+				path: "/wordpress/wp-content/mu-plugins/rewrite.php",
 				data: `<?php
 /* Use pretty permalinks */
 add_action( 'after_setup_theme', function() {
@@ -363,7 +416,7 @@ add_action( 'after_setup_theme', function() {
 			// Enable debug mode for development
 			{
 				step: "writeFile",
-				path: "/wp-content/mu-plugins/debug-config.php",
+				path: "/wordpress/wp-content/mu-plugins/debug-config.php",
 				data: `<?php
 /**
  * Debug configuration for development
@@ -408,35 +461,79 @@ if (WP_DEBUG) {
 		],
 	};
 
+	// Ensure WooCommerce tables are created
+	blueprint.steps.push({
+		step: "runPHP",
+		code: `<?php
+// Ensure WooCommerce database tables are created
+require_once '/wordpress/wp-load.php';
+
+// Check if WooCommerce is active
+if (!class_exists('WooCommerce')) {
+    echo 'WooCommerce not found, skipping table creation.';
+    exit(0);
+}
+
+// Get WooCommerce instance
+$woocommerce = WC();
+
+// Install WooCommerce tables if needed
+if (class_exists('WC_Install')) {
+    WC_Install::check_version();
+    WC_Install::install();
+    echo 'WooCommerce tables checked/created.';
+}
+
+// Ensure product taxonomies are registered
+if (function_exists('wc_register_default_taxonomies')) {
+    wc_register_default_taxonomies();
+    echo ' Taxonomies registered.';
+}
+
+// Flush rewrite rules
+flush_rewrite_rules();
+echo ' Ready for products.';
+?>`,
+	});
+
 	// Add product import steps if products are provided
 	if (products.length > 0) {
-		const steps = blueprint.steps || [];
-		steps.push(
+		blueprint.steps.push(
 			{
 				step: "writeFile",
-				path: "/wp-content/mu-plugins/import-products.php",
+				path: "/wordpress/wp-content/mu-plugins/import-products.php",
 				data: generateProductImportScript(products),
 			},
 			{
 				step: "runPHP",
-				code: `<?php require_once(ABSPATH . 'wp-content/mu-plugins/import-products.php'); ?>`,
+				code: `<?php require_once('/wordpress/wp-content/mu-plugins/import-products.php'); ?>`,
 			},
 			{
 				step: "runPHP",
-				code: `<?php unlink(ABSPATH . 'wp-content/mu-plugins/import-products.php'); ?>`,
+				code: `<?php unlink('/wordpress/wp-content/mu-plugins/import-products.php'); ?>`,
 			},
 		);
-		blueprint.steps = steps;
 	} else {
 		// Import default WooCommerce sample data
-		const steps = blueprint.steps || [];
-		steps.push({
+		blueprint.steps.push({
 			step: "runPHP",
 			code: `<?php
 // This script creates sample WooCommerce products without requiring WXR import
 // It runs after WooCommerce is activated and ready
 
-// Ensure WooCommerce is active
+// Load WordPress
+require_once '/wordpress/wp-load.php';
+
+// Wait for WooCommerce to be fully loaded
+if (!class_exists('WC_Product')) {
+    // Try to load WooCommerce manually if not already loaded
+    $wc_plugin_file = '/wordpress/wp-content/plugins/woocommerce/woocommerce.php';
+    if (file_exists($wc_plugin_file)) {
+        require_once $wc_plugin_file;
+    }
+}
+
+// Double-check WooCommerce is active
 if (!class_exists('WC_Product')) {
     echo 'WooCommerce is not active. Skipping product creation.';
     exit(0);
@@ -497,7 +594,7 @@ $sample_products = array(
         'sku' => 'TSHIRT-001',
         'stock_status' => 'instock',
         'categories' => array('Clothing', 'T-Shirts'),
-        'image_url' => 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800',
+        'image_url' => 'https://via.placeholder.com/800x800/4A90E2/FFFFFF?text=T-Shirt',
         'image_name' => 'premium-tshirt.jpg'
     ),
     array(
@@ -509,7 +606,7 @@ $sample_products = array(
         'sku' => 'HEADPHONES-001',
         'stock_status' => 'instock',
         'categories' => array('Electronics', 'Audio'),
-        'image_url' => 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800',
+        'image_url' => 'https://via.placeholder.com/800x800/E24A4A/FFFFFF?text=Headphones',
         'image_name' => 'wireless-headphones.jpg'
     ),
     array(
@@ -521,7 +618,7 @@ $sample_products = array(
         'sku' => 'COFFEE-001',
         'stock_status' => 'instock',
         'categories' => array('Food & Beverage', 'Coffee'),
-        'image_url' => 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=800',
+        'image_url' => 'https://via.placeholder.com/800x800/8B4513/FFFFFF?text=Coffee',
         'image_name' => 'organic-coffee-beans.jpg'
     ),
     array(
@@ -533,7 +630,7 @@ $sample_products = array(
         'sku' => 'YOGA-MAT-001',
         'stock_status' => 'instock',
         'categories' => array('Sports & Fitness', 'Yoga'),
-        'image_url' => 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=800',
+        'image_url' => 'https://via.placeholder.com/800x800/4AE290/FFFFFF?text=Yoga+Mat',
         'image_name' => 'yoga-mat.jpg'
     ),
     array(
@@ -545,7 +642,7 @@ $sample_products = array(
         'sku' => 'BOTTLE-001',
         'stock_status' => 'instock',
         'categories' => array('Home & Kitchen', 'Drinkware'),
-        'image_url' => 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=800',
+        'image_url' => 'https://via.placeholder.com/800x800/4AC7E2/FFFFFF?text=Water+Bottle',
         'image_name' => 'water-bottle.jpg'
     ),
     array(
@@ -557,7 +654,7 @@ $sample_products = array(
         'sku' => 'WALLET-001',
         'stock_status' => 'instock',
         'categories' => array('Accessories', 'Wallets'),
-        'image_url' => 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=800',
+        'image_url' => 'https://via.placeholder.com/800x800/8B6914/FFFFFF?text=Wallet',
         'image_name' => 'leather-wallet.jpg'
     )
 );
@@ -665,21 +762,17 @@ if ($failed_count > 0) {
 flush_rewrite_rules();
 ?>`,
 		});
-		blueprint.steps = steps;
 	}
 
 	// Add any additional custom steps
 	if (additionalSteps.length > 0) {
-		const steps = blueprint.steps || [];
-		steps.push(...additionalSteps);
-		blueprint.steps = steps;
+		blueprint.steps.push(...additionalSteps);
 	}
 
 	// Add a helpful mu-plugin for development
-	const steps = blueprint.steps || [];
-	steps.push({
+	blueprint.steps.push({
 		step: "writeFile",
-		path: "/wp-content/mu-plugins/playground-helpers.php",
+		path: "/wordpress/wp-content/mu-plugins/playground-helpers.php",
 		data: `<?php
 /**
  * WordPress Playground Development Helpers
@@ -704,7 +797,6 @@ if (WP_DEBUG_LOG) {
 }
 `,
 	});
-	blueprint.steps = steps;
 
 	return blueprint;
 }

@@ -101,8 +101,7 @@ When the current directory contains `wp-admin`, `wp-includes`, and `wp-content`,
 
 1. **Hot Reload**: Changes to your PHP files are reflected immediately - just refresh the browser
 2. **Debug Mode**: WooCommerce and WordPress debug modes are enabled by default
-3. **Query Monitor**: Included by default for debugging
-4. **Sample Data**: WooCommerce sample products are imported automatically
+3. **Sample Data**: WooCommerce sample products are imported automatically
 
 ## Common Scenarios
 
@@ -128,7 +127,7 @@ Create a `blueprint.json`:
   "steps": [
     {
       "step": "installPlugin",
-      "pluginZipFile": {
+      "pluginData": {
         "resource": "wordpress.org/plugins",
         "slug": "woocommerce-subscriptions"
       }

@@ -59,8 +59,8 @@ export type BlueprintStep =
 
 export interface InstallPluginStep {
 	step: "installPlugin";
-	pluginZipFile: PluginResource;
 	pluginData?: PluginResource;
+	pluginZipFile?: FileResource;
 	options?: {
 		activate?: boolean;
 	};
