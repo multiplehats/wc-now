@@ -68,5 +68,19 @@ jobs:
             - name: Install dependencies
               run: pnpm install --frozen-lockfile --prefer-offline
 
-            - name: Run tests
+            - name: Build ## Tests need a completed build.
+              run: pnpm build
+
+            - name: Run unit tests
               run: pnpm test
+
+            - name: Run smoke tests
+              run: pnpm test test/cli.smoke.test.ts
+
+            # Integration tests are flaky in CI, so we run them separately
+            # and allow them to fail on Windows
+            - name: Run integration tests
+              if: matrix.os != 'windows-latest'
+              run: pnpm test:integration
+              continue-on-error: true
+              timeout-minutes: 10
