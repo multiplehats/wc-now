@@ -1,6 +1,6 @@
 {
   "name": "wc-now",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A playground for WordPress and WooCommerce - extends wp-now with WooCommerce defaults and product cloning",
   "type": "module",
   "bin": {
