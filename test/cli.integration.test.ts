@@ -67,25 +67,15 @@ describe("CLI Integration Tests", () => {
 		}
 	});
 
-	it("should start wp-now with WooCommerce defaults", async () => {
+	it("should start WordPress Playground with WooCommerce defaults", async () => {
 		// Path to our CLI
 		const cliPath = join(__dirname, "../dist/cli/index.js");
 
 		// Start the server
-		serverProcess = spawn(
-			"node",
-			[
-				cliPath,
-				"start",
-				`--port=${testPort}`,
-				"--skip-browser",
-				`--path=${testDir}`,
-			],
-			{
-				stdio: ["ignore", "pipe", "pipe"],
-				env: { ...process.env, NODE_ENV: "test" },
-			},
-		);
+		serverProcess = spawn("node", [cliPath, "server", `--port=${testPort}`], {
+			stdio: ["ignore", "pipe", "pipe"],
+			env: { ...process.env, NODE_ENV: "test" },
+		});
 
 		let serverOutput = "";
 		let serverStarted = false;
@@ -100,11 +90,14 @@ describe("CLI Integration Tests", () => {
 			if (
 				output.includes("Starting") ||
 				output.includes("Server running at") ||
-				output.includes("localhost")
+				output.includes("localhost") ||
+				output.includes("WordPress is running on")
 			) {
 				serverStarted = true;
 				// Extract URL from output if available
-				const urlMatch = output.match(/http:\/\/localhost:(\d+)/);
+				const urlMatch = output.match(
+					/http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/,
+				);
 				if (urlMatch) {
 					serverUrl = `http://localhost:${urlMatch[1]}`;
 				} else {
@@ -178,14 +171,7 @@ describe("CLI Integration Tests", () => {
 		const cliPath = join(__dirname, "../dist/cli/index.js");
 		serverProcess = spawn(
 			"node",
-			[
-				cliPath,
-				"start",
-				`--port=${testPort}`,
-				"--skip-browser",
-				`--path=${testDir}`,
-				`--blueprint=${blueprintPath}`,
-			],
+			[cliPath, "server", `--port=${testPort}`, `--blueprint=${blueprintPath}`],
 			{
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env, NODE_ENV: "test" },
@@ -248,7 +234,7 @@ describe("CLI Error Handling", () => {
 
 		const errorProcess = spawn(
 			"node",
-			[cliPath, "start", "--blueprint=non-existent-file.json"],
+			[cliPath, "server", "--blueprint=non-existent-file.json"],
 			{
 				stdio: ["ignore", "pipe", "pipe"],
 			},

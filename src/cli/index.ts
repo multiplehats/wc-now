@@ -23,32 +23,61 @@ if (args.includes("--help") || args.includes("-h")) {
 	console.log(`
 wc-now - WordPress Playground with WooCommerce defaults
 
-Usage: npx wc-now [wp-now-command] [options]
+Usage: npx wc-now [command] [options]
+
+Commands:
+  server              Start a WordPress server with WooCommerce (default)
+  build-snapshot      Build a snapshot of WordPress with WooCommerce
+  run-blueprint       Run a blueprint
 
 Additional Options:
   --blueprint=<path>     Path to a custom blueprint.json to merge with defaults
   --source-url=<url>     URL of a WooCommerce store to clone products from
   --site-name=<name>     Name for the WooCommerce store (default: "My WooCommerce Store")
+  --port=<number>        Port to run the server on (default: 9400)
+  --php=<version>        PHP version to use (default: 8.0)
+  --wp=<version>         WordPress version to use (default: latest)
+  --mount=<paths>        Mount directories (format: /host/path:/vfs/path)
+  --autoMount            Automatically mount the current directory as a plugin/theme
 
-All other options are passed through to wp-now.
+All other options are passed through to wp-playground.
 
 Examples:
-  npx wc-now start
-  npx wc-now start --blueprint=custom.json
-  npx wc-now start --source-url=https://example-store.com
-  npx wc-now start --wp=6.4 --php=8.0
+  npx wc-now server
+  npx wc-now server --blueprint=custom.json
+  npx wc-now server --source-url=https://example-store.com
+  npx wc-now server --wp=6.4 --php=8.0
+  npx wc-now server --mount=/local/plugin:/wordpress/wp-content/plugins/my-plugin
+
+  # Run from within a plugin directory:
+  cd my-plugin && npx wc-now server --autoMount
 `);
 	process.exit(0);
 }
 
 async function main() {
 	try {
+		// Extract command (default to 'server' if not provided)
+		let command = "server";
+		const firstArg = args[0];
+		if (firstArg && !firstArg.startsWith("--")) {
+			if (["server", "build-snapshot", "run-blueprint"].includes(firstArg)) {
+				command = firstArg;
+				args.shift(); // Remove command from args
+			}
+		}
+
 		// Extract our custom arguments
 		let customBlueprintPath: string | undefined;
 		let sourceUrl: string | undefined;
 		let siteName = "My WooCommerce Store";
+		let port = 9400;
+		let phpVersion = "8.0";
+		let wpVersion = "latest";
+		let autoMount = false;
+		const mounts: string[] = [];
 
-		const wpNowArgs: string[] = [];
+		const playgroundArgs: string[] = [command];
 
 		for (let i = 0; i < args.length; i++) {
 			const arg = args[i];
@@ -59,13 +88,33 @@ async function main() {
 				sourceUrl = arg.split("=")[1];
 			} else if (arg.startsWith("--site-name=")) {
 				siteName = arg.split("=")[1];
+			} else if (arg.startsWith("--port=")) {
+				port = Number.parseInt(arg.split("=")[1], 10);
+				playgroundArgs.push(arg);
+			} else if (arg.startsWith("--php=")) {
+				phpVersion = arg.split("=")[1];
+				playgroundArgs.push(arg);
+			} else if (arg.startsWith("--wp=")) {
+				wpVersion = arg.split("=")[1];
+				playgroundArgs.push(arg);
+			} else if (arg.startsWith("--mount=")) {
+				mounts.push(arg.split("=")[1]);
+				playgroundArgs.push(arg);
+			} else if (arg === "--autoMount" || arg === "--auto-mount") {
+				autoMount = true;
+				// Pass it through to wp-playground
+				playgroundArgs.push("--autoMount");
 			} else {
-				wpNowArgs.push(arg);
+				playgroundArgs.push(arg);
 			}
 		}
 
 		// Generate our default blueprint
-		let blueprint = generateWooCommerceBlueprint({ siteName });
+		let blueprint = generateWooCommerceBlueprint({
+			siteName,
+			php: phpVersion,
+			wp: wpVersion,
+		});
 
 		// If source URL is provided, fetch products
 		if (sourceUrl) {
@@ -82,8 +131,8 @@ async function main() {
 					blueprint = generateWooCommerceBlueprint({
 						siteName,
 						products,
-						php: extractVersionArg(wpNowArgs, "--php"),
-						wp: extractVersionArg(wpNowArgs, "--wp"),
+						php: phpVersion,
+						wp: wpVersion,
 					});
 				} else {
 					console.log("⚠️  No products found, using default sample data");
@@ -121,13 +170,28 @@ async function main() {
 		);
 		writeFileSync(tempBlueprintPath, JSON.stringify(blueprint, null, 2));
 
-		// Add the blueprint argument to wp-now
-		wpNowArgs.push(`--blueprint=${tempBlueprintPath}`);
+		// Add the blueprint argument to wp-playground
+		playgroundArgs.push(`--blueprint=${tempBlueprintPath}`);
 
-		console.log("🚀 Starting wp-now with WooCommerce defaults...\n");
+		// Add default port if running server and not already specified
+		if (command === "server" && !args.some((arg) => arg.startsWith("--port"))) {
+			playgroundArgs.push(`--port=${port}`);
+		}
 
-		// Spawn wp-now with our arguments
-		const child = spawn("npx", ["@wp-now/wp-now", ...wpNowArgs], {
+		// If autoMount is enabled, show a helpful message
+		if (autoMount) {
+			console.log("🔧 Auto-mounting current directory...");
+			const cwd = process.cwd();
+			const cwdName = cwd.split("/").pop();
+			console.log(`📁 Detected directory: ${cwdName}`);
+		}
+
+		console.log(
+			"🚀 Starting WordPress Playground with WooCommerce defaults...\n",
+		);
+
+		// Spawn wp-playground with our arguments
+		const child = spawn("npx", ["@wp-playground/cli", ...playgroundArgs], {
 			stdio: "inherit",
 			shell: true,
 		});
@@ -157,12 +221,6 @@ async function main() {
 		console.error("❌ Error:", error);
 		process.exit(1);
 	}
-}
-
-// Helper function to extract version arguments
-function extractVersionArg(args: string[], prefix: string): string | undefined {
-	const arg = args.find((a) => a.startsWith(prefix));
-	return arg ? arg.split("=")[1] : undefined;
 }
 
 // Helper function to merge blueprints

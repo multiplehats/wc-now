@@ -31,8 +31,7 @@ export default defineConfig(({ mode }) => {
 					"node:url",
 					"node:os",
 					"node:crypto",
-					"@wp-now/wp-now",
-					"@wp-now/wp-now/cli.js",
+					"@wp-playground/cli",
 				],
 				output: {
 					preserveModules: true,

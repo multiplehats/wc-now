@@ -1,6 +1,6 @@
 {
   "name": "wc-now",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A playground for WordPress and WooCommerce - extends wp-now with WooCommerce defaults and product cloning",
   "type": "module",
   "bin": {
@@ -61,7 +61,7 @@
   },
   "homepage": "https://github.com/multiplehats/wc-now#readme",
   "dependencies": {
-    "@wp-now/wp-now": "^0.1.74"
+    "@wp-playground/cli": "^1.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

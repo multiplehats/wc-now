@@ -33,59 +33,67 @@ describe("CLI Smoke Tests", () => {
 		expect(output).toContain(
 			"wc-now - WordPress Playground with WooCommerce defaults",
 		);
-		expect(output).toContain("Usage: npx wc-now [wp-now-command] [options]");
+		expect(output).toContain("Usage: npx wc-now [command] [options]");
+		expect(output).toContain("Commands:");
+		expect(output).toContain("server");
+		expect(output).toContain("build-snapshot");
+		expect(output).toContain("run-blueprint");
 		expect(output).toContain("--blueprint=<path>");
 		expect(output).toContain("--source-url=<url>");
 		expect(output).toContain("--site-name=<name>");
 		expect(output).toContain("Examples:");
 	});
 
-	it("should pass through wp-now help", async () => {
-		const wpNowHelpProcess = spawn("node", [cliPath, "start", "--help"], {
+	it("should pass through playground help for server command", async () => {
+		const serverHelpProcess = spawn("node", [cliPath, "server", "--help"], {
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
 		let output = "";
 		let errorOutput = "";
 
-		wpNowHelpProcess.stdout?.on("data", (data) => {
+		serverHelpProcess.stdout?.on("data", (data) => {
 			output += data.toString();
 		});
 
-		wpNowHelpProcess.stderr?.on("data", (data) => {
+		serverHelpProcess.stderr?.on("data", (data) => {
 			errorOutput += data.toString();
 		});
 
 		await new Promise<void>((resolve) => {
-			wpNowHelpProcess.on("exit", () => resolve());
+			serverHelpProcess.on("exit", () => resolve());
 		});
 
-		// Should contain wp-now help content
+		// Should contain playground help content
 		const combinedOutput = output + errorOutput;
-		expect(combinedOutput.toLowerCase()).toMatch(/wp-now|wordpress|php/i);
+		expect(combinedOutput.toLowerCase()).toMatch(/wordpress|playground|php/i);
 	});
 
-	it("should handle php command", async () => {
-		const phpProcess = spawn("node", [cliPath, "php", "--help"], {
-			stdio: ["ignore", "pipe", "pipe"],
-		});
+	it("should handle run-blueprint command", async () => {
+		const blueprintProcess = spawn(
+			"node",
+			[cliPath, "run-blueprint", "--help"],
+			{
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		);
 
 		let output = "";
 		let errorOutput = "";
 
-		phpProcess.stdout?.on("data", (data) => {
+		blueprintProcess.stdout?.on("data", (data) => {
 			output += data.toString();
 		});
 
-		phpProcess.stderr?.on("data", (data) => {
+		blueprintProcess.stderr?.on("data", (data) => {
 			errorOutput += data.toString();
 		});
 
 		await new Promise<void>((resolve) => {
-			phpProcess.on("exit", () => resolve());
+			blueprintProcess.on("exit", () => resolve());
 		});
 
-		// Should pass through to wp-now php command
+		// Should pass through to playground run-blueprint command
 		const combinedOutput = output + errorOutput;
 		expect(combinedOutput).toBeTruthy();
 	});
@@ -93,12 +101,7 @@ describe("CLI Smoke Tests", () => {
 	it("should validate blueprint file exists", async () => {
 		const errorProcess = spawn(
 			"node",
-			[
-				cliPath,
-				"start",
-				"--blueprint=/non/existent/path/blueprint.json",
-				"--dry-run", // If wp-now supports this
-			],
+			[cliPath, "server", "--blueprint=/non/existent/path/blueprint.json"],
 			{
 				stdio: ["ignore", "pipe", "pipe"],
 			},
@@ -125,9 +128,9 @@ describe("CLI Smoke Tests", () => {
 	});
 
 	it("should show our custom message when starting", async () => {
-		// We can't easily test the full start without actually starting wp-now
+		// We can't easily test the full start without actually starting playground
 		// But we can at least verify our wrapper executes
-		const startProcess = spawn("node", [cliPath, "start", "--help"], {
+		const startProcess = spawn("node", [cliPath, "server", "--help"], {
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
