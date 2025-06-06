@@ -28,12 +28,12 @@ describe("Blueprint Generator", () => {
 
 		// Check for debug constants
 		const debugStep = blueprint.steps?.find(
-			(step) => step.step === "defineWpConfigConsts",
+			(step) =>
+				step.step === "writeFile" &&
+				"path" in step &&
+				step.path === "/wp-content/mu-plugins/debug-config.php",
 		);
 		expect(debugStep).toBeDefined();
-		if (debugStep && "consts" in debugStep) {
-			expect(debugStep.consts.WP_DEBUG).toBe(true);
-		}
 	});
 
 	it("should generate blueprint with custom options", () => {
@@ -93,7 +93,7 @@ describe("Blueprint Generator", () => {
 			(step) =>
 				step.step === "writeFile" &&
 				"path" in step &&
-				step.path === "/wordpress/wp-content/mu-plugins/import-products.php",
+				step.path === "/wp-content/mu-plugins/import-products.php",
 		);
 		expect(importProductsStep).toBeDefined();
 

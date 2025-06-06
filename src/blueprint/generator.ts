@@ -254,10 +254,6 @@ export function generateWooCommerceBlueprint(
 		features: {
 			networking: true,
 		},
-		login: {
-			username: "admin",
-			password: "password",
-		},
 		steps: [
 			// Install WooCommerce
 			{
@@ -365,15 +361,48 @@ add_action( 'after_setup_theme', function() {
 			},
 			// Enable debug mode for development
 			{
-				step: "defineWpConfigConsts",
-				consts: {
-					WP_DEBUG: true,
-					WP_DEBUG_LOG: true,
-					WP_DEBUG_DISPLAY: false,
-					SCRIPT_DEBUG: true,
-					WP_ENVIRONMENT_TYPE: "development",
-				},
-				method: "define-before-run",
+				step: "writeFile",
+				path: "/wp-content/mu-plugins/debug-config.php",
+				data: `<?php
+/**
+ * Debug configuration for development
+ * Using mu-plugin to ensure these are set after wp-config.php
+ */
+
+// Only define constants if they haven't been defined already
+if (!defined('WP_DEBUG')) {
+    define('WP_DEBUG', true);
+}
+
+if (!defined('WP_DEBUG_LOG')) {
+    define('WP_DEBUG_LOG', true);
+}
+
+if (!defined('WP_DEBUG_DISPLAY')) {
+    define('WP_DEBUG_DISPLAY', false);
+}
+
+if (!defined('SCRIPT_DEBUG')) {
+    define('SCRIPT_DEBUG', true);
+}
+
+if (!defined('WP_ENVIRONMENT_TYPE')) {
+    define('WP_ENVIRONMENT_TYPE', 'development');
+}
+
+// Additional debug helpers
+if (WP_DEBUG) {
+    // Ensure error reporting is enabled
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+
+    // Set error log location if not already set
+    if (!ini_get('error_log')) {
+        ini_set('error_log', WP_CONTENT_DIR . '/debug.log');
+    }
+}
+`,
 			},
 		],
 	};
