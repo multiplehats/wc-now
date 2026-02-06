@@ -200,10 +200,19 @@ async function main() {
 			"🚀 Starting WordPress Playground with WooCommerce defaults...\n",
 		);
 
+		// Resolve the locally installed @wp-playground/cli binary
+		// This avoids npx downloading a different version at runtime
+		const playgroundPkgUrl = import.meta.resolve(
+			"@wp-playground/cli/package.json",
+		);
+		const playgroundCliPath = join(
+			dirname(fileURLToPath(playgroundPkgUrl)),
+			"wp-playground.js",
+		);
+
 		// Spawn wp-playground with our arguments
-		const child = spawn("npx", ["@wp-playground/cli", ...playgroundArgs], {
+		const child = spawn(process.execPath, [playgroundCliPath, ...playgroundArgs], {
 			stdio: "inherit",
-			shell: true,
 		});
 
 		// Clean up on exit
