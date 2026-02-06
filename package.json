@@ -61,7 +61,7 @@
   },
   "homepage": "https://github.com/multiplehats/wc-now#readme",
   "dependencies": {
-    "@wp-playground/cli": "^1.1.1"
+    "@wp-playground/cli": "^3.0.46"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

@@ -31,7 +31,7 @@ describe("Blueprint Generator", () => {
 			(step) =>
 				step.step === "writeFile" &&
 				"path" in step &&
-				step.path === "/wp-content/mu-plugins/debug-config.php",
+				step.path === "/wordpress/wp-content/mu-plugins/debug-config.php",
 		);
 		expect(debugStep).toBeDefined();
 	});
@@ -93,7 +93,7 @@ describe("Blueprint Generator", () => {
 			(step) =>
 				step.step === "writeFile" &&
 				"path" in step &&
-				step.path === "/wp-content/mu-plugins/import-products.php",
+				step.path === "/wordpress/wp-content/mu-plugins/import-products.php",
 		);
 		expect(importProductsStep).toBeDefined();
 

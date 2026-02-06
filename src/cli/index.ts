@@ -26,7 +26,8 @@ wc-now - WordPress Playground with WooCommerce defaults
 Usage: npx wc-now [command] [options]
 
 Commands:
-  server              Start a WordPress server with WooCommerce (default)
+  start               Start a WordPress server with WooCommerce (default, recommended)
+  server              Start a WordPress server with WooCommerce (advanced, low-level)
   build-snapshot      Build a snapshot of WordPress with WooCommerce
   run-blueprint       Run a blueprint
 
@@ -43,25 +44,29 @@ Additional Options:
 All other options are passed through to wp-playground.
 
 Examples:
-  npx wc-now server
-  npx wc-now server --blueprint=custom.json
-  npx wc-now server --source-url=https://example-store.com
-  npx wc-now server --wp=6.4 --php=8.0
-  npx wc-now server --mount=/local/plugin:/wordpress/wp-content/plugins/my-plugin
+  npx wc-now start
+  npx wc-now start --blueprint=custom.json
+  npx wc-now start --source-url=https://example-store.com
+  npx wc-now start --wp=6.4 --php=8.0
+  npx wc-now start --mount=/local/plugin:/wordpress/wp-content/plugins/my-plugin
 
   # Run from within a plugin directory:
-  cd my-plugin && npx wc-now server --autoMount
+  cd my-plugin && npx wc-now start --autoMount
 `);
 	process.exit(0);
 }
 
 async function main() {
 	try {
-		// Extract command (default to 'server' if not provided)
-		let command = "server";
+		// Extract command (default to 'start' if not provided)
+		let command = "start";
 		const firstArg = args[0];
 		if (firstArg && !firstArg.startsWith("--")) {
-			if (["server", "build-snapshot", "run-blueprint"].includes(firstArg)) {
+			if (
+				["start", "server", "build-snapshot", "run-blueprint"].includes(
+					firstArg,
+				)
+			) {
 				command = firstArg;
 				args.shift(); // Remove command from args
 			}
@@ -102,8 +107,10 @@ async function main() {
 				playgroundArgs.push(arg);
 			} else if (arg === "--autoMount" || arg === "--auto-mount") {
 				autoMount = true;
-				// Pass it through to wp-playground
-				playgroundArgs.push("--autoMount");
+				// Only pass through for 'server' command; 'start' auto-mounts by default
+				if (command === "server") {
+					playgroundArgs.push("--autoMount");
+				}
 			} else {
 				playgroundArgs.push(arg);
 			}
@@ -173,8 +180,11 @@ async function main() {
 		// Add the blueprint argument to wp-playground
 		playgroundArgs.push(`--blueprint=${tempBlueprintPath}`);
 
-		// Add default port if running server and not already specified
-		if (command === "server" && !args.some((arg) => arg.startsWith("--port"))) {
+		// Add default port if running start/server and not already specified
+		if (
+			(command === "start" || command === "server") &&
+			!args.some((arg) => arg.startsWith("--port"))
+		) {
 			playgroundArgs.push(`--port=${port}`);
 		}
 
