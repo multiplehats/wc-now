@@ -321,31 +321,32 @@ foreach ($required_tables as $table) {
 echo "WordPress core initialized and database verified.";
 ?>`,
 			},
-			// Install WooCommerce
+			// Install and activate WooCommerce.
+			//
+			// We activate via installPlugin's `activate` option instead of a
+			// separate `activatePlugin` step. The standalone step in
+			// @wp-playground/cli v3 unconditionally unlinks a log file under
+			// /tmp (which may not exist in the Playground VFS), aborting the
+			// whole blueprint with:
+			//   Could not unlink "/tmp/playground-activate-plugin.log"
+			// installPlugin + { activate: true } performs the same activation
+			// without that fragile cleanup.
 			{
 				step: "installPlugin",
 				pluginData: {
 					resource: "wordpress.org/plugins",
 					slug: "woocommerce",
 				},
+				options: { activate: true },
 			},
-			// Install any additional plugins
+			// Install and activate any additional plugins
 			...additionalPlugins.map((plugin) => ({
 				step: "installPlugin" as const,
 				pluginData: {
 					resource: "wordpress.org/plugins" as const,
 					slug: plugin,
 				},
-			})),
-			// Activate plugins
-			{
-				step: "activatePlugin",
-				pluginPath: "woocommerce/woocommerce.php",
-			},
-			// Activate additional plugins
-			...additionalPlugins.map((plugin) => ({
-				step: "activatePlugin" as const,
-				pluginPath: `${plugin}/${plugin}.php`,
+				options: { activate: true },
 			})),
 			// Create mu-plugins directory
 			{
