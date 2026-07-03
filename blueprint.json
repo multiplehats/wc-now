@@ -22,11 +22,10 @@
       "pluginData": {
         "resource": "wordpress.org/plugins",
         "slug": "woocommerce"
+      },
+      "options": {
+        "activate": true
       }
-    },
-    {
-      "step": "activatePlugin",
-      "pluginPath": "woocommerce/woocommerce.php"
     },
     {
       "step": "mkdir",

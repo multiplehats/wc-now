@@ -36,6 +36,43 @@ describe("Blueprint Generator", () => {
 		expect(debugStep).toBeDefined();
 	});
 
+	it("activates plugins via installPlugin options, not a standalone activatePlugin step", () => {
+		// Regression: the standalone `activatePlugin` step in @wp-playground/cli
+		// v3 unconditionally unlinks a log under /tmp that may not exist in the
+		// Playground VFS, aborting the whole blueprint with
+		// `Could not unlink "/tmp/playground-activate-plugin.log"`. Activation
+		// must ride on installPlugin's `activate` option instead.
+		const blueprint = generateWooCommerceBlueprint({
+			additionalPlugins: ["akismet"],
+		});
+
+		const activateSteps = blueprint.steps?.filter(
+			(step) => step.step === "activatePlugin",
+		);
+		expect(activateSteps).toHaveLength(0);
+
+		const wcPlugin = blueprint.steps?.find(
+			(step) =>
+				step.step === "installPlugin" &&
+				"pluginData" in step &&
+				step.pluginData?.slug === "woocommerce",
+		);
+		const akismetPlugin = blueprint.steps?.find(
+			(step) =>
+				step.step === "installPlugin" &&
+				"pluginData" in step &&
+				step.pluginData?.slug === "akismet",
+		);
+		expect(
+			wcPlugin && "options" in wcPlugin && wcPlugin.options?.activate,
+		).toBe(true);
+		expect(
+			akismetPlugin &&
+				"options" in akismetPlugin &&
+				akismetPlugin.options?.activate,
+		).toBe(true);
+	});
+
 	it("should generate blueprint with custom options", () => {
 		const blueprint = generateWooCommerceBlueprint({
 			siteName: "Test Store",
