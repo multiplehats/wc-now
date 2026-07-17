@@ -1,5 +1,15 @@
 # wc-now
 
+## 1.0.0
+
+### Major Changes
+
+- Upgrade WordPress Playground to 3.1.45 and generate native Blueprint v2 by default using the official v2 schema types. Blueprint v1 remains available with `blueprintVersion: 1`, and custom Blueprint files are auto-detected by version. Also fix Store API trailing-slash URLs, preserve mount forwarding while removing dead CLI state, and modernize the custom Blueprint example. ([`832cb7a`](https://github.com/multiplehats/wc-now/commit/832cb7a9b1d8e6e09e08c64d67b044fc48f5bfa0))
+
+### Patch Changes
+
+- Fix `--autoMount`: forward the `--auto-mount` flag that the WordPress Playground CLI actually recognizes (kebab-case). Previously `wc-now server --autoMount` passed an unrecognized `--autoMount` flag downstream and mounted nothing. Also correct the package `description` and keywords, which still referenced `wp-now` instead of the WordPress Playground CLI. ([`6441432`](https://github.com/multiplehats/wc-now/commit/64414326a488731f589db5374d450af4e7227776))
+
 ## 0.2.2
 
 ### Patch Changes
