@@ -6,7 +6,9 @@ Migrate `wc-now` releases from a long-lived npm token to npm Trusted Publishing 
 
 ## Root Cause
 
-The release build succeeds and `wc-now@0.2.1` exists in the npm registry with repository metadata matching `multiplehats/wc-now`. The failure occurs when npm handles the authenticated `PUT` for version `0.2.2`. The workflow currently supplies `NPM_TOKEN`, so it follows the legacy token-authentication path; npm reports rejected or unauthorized package publishing as a 404.
+The original release build succeeded and `wc-now@0.2.1` existed in the npm registry with repository metadata matching `multiplehats/wc-now`. The failure occurred when npm handled the authenticated `PUT` for version `0.2.2`. That workflow supplied `NPM_TOKEN`, so it followed the legacy token-authentication path; npm reports rejected or unauthorized package publishing as a 404.
+
+The first OIDC release run confirmed that Changesets detected GitHub's OIDC environment. However, the `registry-url` input made `actions/setup-node` create token-based npm configuration and export a dummy `NODE_AUTH_TOKEN`. npm followed that configured token path and returned the same masked 404 instead of completing Trusted Publishing. Leaving `registry-url` unset removes the generated token authentication while npm continues to use npmjs.org as its default registry.
 
 ## Design
 
@@ -18,7 +20,7 @@ The workflow will:
 - retain `contents: write` and `pull-requests: write`, which Changesets needs;
 - remove `packages: write`, which applies to GitHub Packages rather than npm;
 - run on Node.js 24 so the bundled npm CLI supports Trusted Publishing;
-- configure `https://registry.npmjs.org` as the npm registry;
+- leave `registry-url` unset so `actions/setup-node` does not create token-based npm authentication or export a dummy `NODE_AUTH_TOKEN`;
 - disable the dependency cache for the release job;
 - stop exposing `NPM_TOKEN` to the Changesets action.
 
@@ -38,7 +40,7 @@ The package's existing `repository.url` already matches the trusted GitHub repos
 2. The workflow installs dependencies and invokes `changesets/action`.
 3. If Changesets finds pending changesets, it creates or updates the release pull request as before.
 4. If no changesets remain and an unpublished package version exists, `pnpm ci:publish` builds the package and `changeset publish` invokes npm.
-5. npm detects the GitHub Actions OIDC environment, exchanges the workflow identity for a short-lived registry credential, and publishes `wc-now`.
+5. npm uses its default npmjs.org registry, detects the GitHub Actions OIDC environment, exchanges the workflow identity for a short-lived registry credential, and publishes `wc-now`.
 6. npm automatically records provenance for the public package published from the public repository.
 
 ## Error Handling
@@ -53,9 +55,9 @@ Static verification will confirm that:
 
 - the workflow is valid YAML;
 - `id-token: write` is present;
-- Node.js 24 and the npm registry are configured;
+- Node.js 24 is configured;
+- `registry-url`, `NPM_TOKEN`, and `NODE_AUTH_TOKEN` are absent so npm cannot fall back to setup-node's dummy token authentication;
 - release caching is disabled;
-- no npm publishing token is referenced;
 - the package repository metadata matches `multiplehats/wc-now`.
 
 Local project verification will run the existing typecheck, lint, tests, and build. The complete end-to-end authentication check can only occur in GitHub Actions when an unpublished version is published. The next release run should show that Changesets detected OIDC and used npm Trusted Publishing.

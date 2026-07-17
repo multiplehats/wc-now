@@ -4,7 +4,7 @@
 
 **Goal:** Publish `wc-now` from the existing Changesets workflow with npm Trusted Publishing instead of a long-lived npm token.
 
-**Architecture:** Keep `.github/workflows/release.yml` as the single release orchestrator and keep `changesets/action@v1` invoking `pnpm ci:publish`. Give the job an OIDC identity, run a Trusted Publishing-compatible Node/npm toolchain, configure npmjs.org explicitly, and remove every token-authentication fallback from the workflow.
+**Architecture:** Keep `.github/workflows/release.yml` as the single release orchestrator and keep `changesets/action@v1` invoking `pnpm ci:publish`. Give the job an OIDC identity, run a Trusted Publishing-compatible Node/npm toolchain, use npm's default npmjs.org registry, and remove every token-authentication fallback from the workflow.
 
 **Tech Stack:** GitHub Actions, Node.js 24, npm 11.5.1 or newer, pnpm 9.14.4, Changesets, npm Trusted Publishing/OIDC
 
@@ -41,15 +41,15 @@ import { readFileSync } from "node:fs";
 const workflow = readFileSync(".github/workflows/release.yml", "utf8");
 assert.match(workflow, /^\s*id-token:\s*write\s*$/m);
 assert.match(workflow, /^\s*node-version:\s*24\s*$/m);
-assert.match(workflow, /^\s*registry-url:\s*"https:\/\/registry\.npmjs\.org"\s*$/m);
 assert.match(workflow, /^\s*package-manager-cache:\s*false\s*$/m);
+assert.doesNotMatch(workflow, /^\s*registry-url:/m);
 assert.doesNotMatch(workflow, /^\s*cache:\s*pnpm\s*$/m);
 assert.doesNotMatch(workflow, /^\s*packages:\s*write\s*$/m);
 assert.doesNotMatch(workflow, /NPM_TOKEN|NODE_AUTH_TOKEN/);
 '
 ```
 
-Expected: FAIL on the missing `id-token: write` assertion, proving the check detects the legacy token-based workflow.
+Expected: FAIL on the `registry-url` assertion, proving the check detects setup-node's token-authentication configuration.
 
 - [ ] **Step 2: Apply the minimal trusted-publishing workflow configuration**
 
@@ -83,7 +83,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
       - name: Install dependencies
@@ -139,7 +138,7 @@ git diff -- .github/workflows/release.yml
 git status --short
 ```
 
-Expected: no whitespace errors; the workflow diff only adds OIDC-compatible release configuration, updates the relevant official Actions, and removes legacy npm token/package permissions; the plan document may also appear as an untracked file.
+Expected: no whitespace errors; the workflow diff only adds OIDC-compatible release configuration, updates the relevant official Actions, and removes registry/token/package authentication settings; the plan document may also appear as an untracked file.
 
 - [ ] **Step 7: Commit the implementation**
 
