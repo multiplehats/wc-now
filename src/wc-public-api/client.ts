@@ -49,7 +49,7 @@ export class WCStoreApiClient {
 
 	constructor(storeUrl: string) {
 		// Remove trailing slash if present
-		this.baseUrl = storeUrl.replace(/\/$core/, "");
+		this.baseUrl = storeUrl.replace(/\/$/, "");
 	}
 
 	private async fetch<T>(
