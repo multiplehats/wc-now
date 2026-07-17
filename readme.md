@@ -96,6 +96,52 @@ npx wc-now start --source-url=https://example-store.com
 
 This fetches up to 10 products from the source store and imports them with their names, descriptions, prices (regular and sale), categories, images, stock status, and SKUs. If the fetch fails or returns nothing, wc-now falls back to the built-in sample products.
 
+### Named instances
+
+`start` and `server` run one playground in the **foreground**. The instance-lifecycle commands run **named, backgrounded, managed** instances instead: `up` spawns a detached playground, waits for a readiness gate, and returns; the other commands operate on it by name.
+
+```bash
+# Boot a named WooCommerce instance in the background (ephemeral by default)
+npx wc-now up --name my-shop --php=8.2
+
+# See what's running
+npx wc-now list
+# NAME     PORT   STATUS   URL
+# my-shop  9431   running  http://127.0.0.1:9431
+
+# Run PHP inside the live instance (no second process, state stays coherent)
+npx wc-now exec my-shop --code 'echo WC()->version;'
+npx wc-now exec my-shop --file ./scripts/seed.php
+
+# Tail its debug.log (a real host file)
+npx wc-now logs my-shop -f
+
+# Wipe just the data, or tear the whole thing down
+npx wc-now reset my-shop
+npx wc-now stop my-shop
+```
+
+Each instance composes with the WooCommerce blueprint generation and `--blueprint` merge exactly as `start` does, so all the usual boot flags (`--php`, `--wp`, `--blueprint`, `--source-url`, `--site-name`, `--mount`) apply to `up`.
+
+| Command                                     | Description                                                                                        |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `up --name <slug>`                          | Background-boot a named instance; returns once it answers HTTP. Adds `--port`, `--persist`/`--ephemeral`, `--wait <secs>`. |
+| `list`                                      | Show name → port → status → URL for every registered instance.                                     |
+| `stop <name>`                               | Stop the instance. Ephemeral instances also remove their site dir + registry entry; persist keeps them. |
+| `logs <name> [-f] [-n N]`                   | Tail the instance's `debug.log`.                                                                   |
+| `exec <name> (--code '<php>' \| --file f)`  | Run PHP inside the live instance and print its output.                                             |
+| `reset <name>`                              | Wipe the instance's site dir for a clean next `up`.                                                |
+| `prune`                                     | Reap dead ephemeral instances and instances whose mounted workspace has vanished.                  |
+| `port <name>`                               | Print the deterministic port a name maps to.                                                       |
+
+**Persistence.** Instances are **ephemeral** by default: each `up` boots fresh and `stop` removes everything. Pass `--persist` to keep the site directory between runs — `up --name x --persist` then reconnects to the seeded site instead of re-running the blueprint, and `reset x` wipes it.
+
+**Ports.** With no `--port`, a name maps to a deterministic port (hashed into the `9400–9499` range), linear-probing to the next free port on a collision, so the same name comes back on the same port.
+
+**How it works.** `up` boots with Playground `start` (not `server`) from a per-instance working directory so each instance gets an isolated, locatable site dir; it mounts a per-instance mu-plugins directory (a token-guarded loopback endpoint `exec` calls, plus an `error_log` redirect) and a logs directory so `debug.log` is a real host file. Health and `exec` requests use the `/?rest_route=/…` form and retry transient errors while a freshly-booted instance's workers settle.
+
+> Registry state lives under `~/.wc-now` (override with the `WC_NOW_HOME` environment variable).
+
 ### Custom Blueprints
 
 Merge your own blueprint with the WooCommerce defaults:
