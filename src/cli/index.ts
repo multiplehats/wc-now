@@ -1,18 +1,13 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import {
-	generateWooCommerceBlueprint,
-	transformWooCommerceProducts,
-	type ProductImport,
-} from "../blueprint/generator";
-import { mergeBlueprints, resolveBlueprintVersion } from "../blueprint/merge";
-import { WCStoreApiClient } from "../wc-public-api";
+import { resolveWooBlueprint } from "../blueprint/resolve";
 import type { Blueprint, BlueprintVersion } from "../blueprint/types";
+import { INSTANCE_COMMANDS, runInstanceCommand } from "../instances/manager";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,8 +15,13 @@ const __dirname = dirname(__filename);
 // Parse command line arguments
 const args = process.argv.slice(2);
 
+// Lifecycle sub-commands own their own arg handling; don't let the top-level
+// --help block swallow e.g. `wc-now up --help`.
+const isLifecycleCommand =
+	args[0] !== undefined && INSTANCE_COMMANDS.includes(args[0]);
+
 // Check if user wants help
-if (args.includes("--help") || args.includes("-h")) {
+if (!isLifecycleCommand && (args.includes("--help") || args.includes("-h"))) {
 	console.log(`
 wc-now - WordPress Playground with WooCommerce defaults
 
@@ -32,6 +32,19 @@ Commands:
   server              Start a WordPress server with WooCommerce (advanced, low-level)
   build-snapshot      Build a snapshot of WordPress with WooCommerce
   run-blueprint       Run a blueprint
+
+Instance lifecycle (named, backgrounded, managed instances):
+  up --name <slug>    Background-boot a named instance; returns once it is ready
+  list                Show name → port → status → URL for all instances
+  stop <name>         Stop an instance (ephemeral: removes site + registry entry)
+  logs <name> [-f]    Tail the instance's debug.log ([-n N] lines)
+  exec <name>         Run PHP inside the live instance (--code '<php>' | --file f.php)
+  reset <name>        Wipe the instance's site dir for a clean next boot
+  prune               Reap dead ephemeral instances and orphaned workspaces
+  port <name>         Print the deterministic port for a name
+
+up options: --port <n> --persist|--ephemeral --php <v> --wp <v> --blueprint <f>
+            --source-url <url> --site-name <name> --mount host:vfs --wait <secs>
 
 Additional Options:
   --blueprint=<path>     Path to a custom blueprint.json to merge with defaults
@@ -128,69 +141,23 @@ async function main() {
 			}
 		}
 
-		let customBlueprint: Blueprint | undefined;
-		if (customBlueprintPath) {
-			const resolvedPath = resolve(customBlueprintPath);
-			if (!existsSync(resolvedPath)) {
-				console.error(`❌ Blueprint file not found: ${customBlueprintPath}`);
-				process.exit(1);
-			}
-			customBlueprint = JSON.parse(readFileSync(resolvedPath, "utf-8"));
-		}
-
-		const blueprintVersion = resolveBlueprintVersion(
-			customBlueprint,
-			requestedBlueprintVersion,
-		);
-		const generateBlueprint = (products: ProductImport[] = []) =>
-			blueprintVersion === 1
-				? generateWooCommerceBlueprint({
-						blueprintVersion: 1,
-						siteName,
-						products,
-						php: phpVersion,
-						wp: wpVersion,
-					})
-				: generateWooCommerceBlueprint({
-						blueprintVersion: 2,
-						siteName,
-						products,
-						php: phpVersion,
-						wp: wpVersion,
-					});
-
-		// Generate our default blueprint in the selected format.
-		let blueprint: Blueprint = generateBlueprint();
-
-		// If source URL is provided, fetch products
-		if (sourceUrl) {
-			console.log(`🔍 Fetching products from ${sourceUrl}...`);
-			try {
-				const wcApi = new WCStoreApiClient(sourceUrl);
-				const response = await wcApi.getProducts({ per_page: 10 });
-
-				if (response.data && response.data.length > 0) {
-					const products = transformWooCommerceProducts(response.data);
-					console.log(`✅ Found ${products.length} products to import`);
-
-					// Regenerate blueprint with products
-					blueprint = generateBlueprint(products);
-				} else {
-					console.log("⚠️  No products found, using default sample data");
-				}
-			} catch (error) {
-				console.error(
-					"⚠️  Failed to fetch products:",
-					error instanceof Error ? error.message : error,
-				);
-				console.log("Using default sample data instead");
-			}
-		}
-
-		// If custom blueprint is provided, merge it
-		if (customBlueprint && customBlueprintPath) {
-			console.log(`📄 Merging custom blueprint from ${customBlueprintPath}...`);
-			blueprint = mergeBlueprints(blueprint, customBlueprint);
+		// Build the WooCommerce blueprint (generate defaults, optionally clone
+		// products, merge a custom blueprint) using the same shared resolver the
+		// `up` lifecycle command uses, so both compose identically.
+		let blueprint: Blueprint;
+		try {
+			blueprint = await resolveWooBlueprint({
+				customBlueprintPath,
+				sourceUrl,
+				siteName,
+				php: phpVersion,
+				wp: wpVersion,
+				requestedBlueprintVersion,
+				log: console.log,
+			});
+		} catch (error) {
+			console.error(`❌ ${error instanceof Error ? error.message : error}`);
+			process.exit(1);
 		}
 
 		// Create a temporary blueprint file
@@ -269,5 +236,13 @@ async function main() {
 	}
 }
 
-// Run the CLI
-main().catch(console.error);
+// Run the CLI: dispatch instance-lifecycle sub-commands to the manager,
+// otherwise fall through to the foreground start/server pipeline.
+if (isLifecycleCommand) {
+	runInstanceCommand(args[0], args.slice(1)).catch((error) => {
+		console.error(`wc-now: ${error instanceof Error ? error.message : error}`);
+		process.exit(1);
+	});
+} else {
+	main().catch(console.error);
+}

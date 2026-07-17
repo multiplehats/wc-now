@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
 				external: [
 					"node:child_process",
 					"node:fs",
+					"node:net",
 					"node:path",
 					"node:url",
 					"node:os",
