@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
 	generateWooCommerceBlueprint,
 	transformWooCommerceProducts,
@@ -146,6 +147,23 @@ describe("Blueprint Generator", () => {
 				step.code.filename === "import-products.php",
 		);
 		expect(importProductsStep).toBeDefined();
+	});
+
+	it("keeps the custom example on v2 without standalone plugin activation", () => {
+		const example = JSON.parse(
+			readFileSync(
+				new URL("../examples/custom-blueprint.json", import.meta.url),
+				"utf8",
+			),
+		);
+
+		expect(example.version).toBe(2);
+		expect(example.plugins).toContain("productbird");
+		expect(example.additionalStepsAfterExecution ?? []).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ step: "activatePlugin" }),
+			]),
+		);
 	});
 
 	it("should transform WooCommerce API products correctly", () => {

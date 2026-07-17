@@ -1,37 +1,23 @@
 {
-    "$schema": "https://playground.wordpress.net/blueprint-schema.json",
-    "landingPage": "/wp-admin/admin.php?page=wc-admin",
-    "preferredVersions": {
-        "php": "8.2",
-        "wp": "6.4"
-    },
-    "plugins": [
-        "wordpress-seo"
-    ],
-    "steps": [
-        {
-            "step": "installPlugin",
-            "pluginData": {
-                "resource": "wordpress.org/plugins",
-                "slug": "productbird"
-            }
-        },
-        {
-            "step": "activatePlugin",
-            "pluginPath": "productbird/productbird.php"
-        },
-        {
-            "step": "setSiteOptions",
-            "options": {
-                "woocommerce_currency": "EUR",
-                "woocommerce_default_country": "NL",
-                "woocommerce_store_city": "Amsterdam"
-            }
-        },
-        {
-            "step": "writeFile",
-            "path": "/wordpress/wp-content/mu-plugins/custom-tweaks.php",
-            "data": "<?php\n// Custom tweaks for development\nadd_filter('woocommerce_admin_features', function($features) {\n    $features[] = 'analytics';\n    $features[] = 'remote-inbox-notifications';\n    return $features;\n});"
-        }
-    ]
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "version": 2,
+  "applicationOptions": {
+    "wordpress-playground": {
+      "landingPage": "/wp-admin/admin.php?page=wc-admin"
+    }
+  },
+  "phpVersion": "8.2",
+  "wordpressVersion": "6.4",
+  "plugins": ["wordpress-seo", "productbird"],
+  "siteOptions": {
+    "woocommerce_currency": "EUR",
+    "woocommerce_default_country": "NL",
+    "woocommerce_store_city": "Amsterdam"
+  },
+  "muPlugins": [
+    {
+      "filename": "custom-tweaks.php",
+      "content": "<?php\n// Custom tweaks for development\nadd_filter('woocommerce_admin_features', function($features) {\n    $features[] = 'analytics';\n    $features[] = 'remote-inbox-notifications';\n    return $features;\n});"
+    }
+  ]
 }
