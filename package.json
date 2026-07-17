@@ -1,6 +1,6 @@
 {
   "name": "wc-now",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A playground for WordPress and WooCommerce - extends the WordPress Playground CLI with WooCommerce defaults and product cloning",
   "type": "module",
   "bin": {
