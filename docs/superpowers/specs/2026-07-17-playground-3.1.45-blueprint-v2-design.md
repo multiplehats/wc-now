@@ -49,9 +49,11 @@ The generator options become a discriminated v1/v2 union:
   the explicit v1 form.
 
 The package will export explicit `BlueprintV1`, `BlueprintV2`,
-`BlueprintV1Step`, and `BlueprintV2Step` types. `Blueprint` will be the union
-used where either version is accepted. Existing consumers that require v1
-output can retain the old behavior by adding `blueprintVersion: 1`.
+`BlueprintV1Step`, and `BlueprintV2Step` types. The v2 types will come from the
+matching official `@wp-playground/blueprints` package so the public surface
+covers the full published schema. `Blueprint` will be the union used where
+either version is accepted. Existing consumers that require v1 output can
+retain the old behavior by adding `blueprintVersion: 1`.
 
 Shared WooCommerce values and PHP source strings remain shared implementation
 details. Each format receives a native generator rather than converting one
@@ -133,7 +135,8 @@ V2 merging follows the same intent with v2 fields:
 - Convert `examples/custom-blueprint.json` to a v2 example using declarative
   `plugins`. This removes its discouraged standalone `activatePlugin` step.
 - Preserve the dependency caret policy with `@wp-playground/cli: ^3.1.45` and
-  update the lockfile to resolve `3.1.45`.
+  `@wp-playground/blueprints: ^3.1.45`, and update the lockfile to resolve both
+  to `3.1.45`.
 
 ## Documentation
 

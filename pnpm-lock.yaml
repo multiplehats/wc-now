@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@wp-playground/blueprints':
+        specifier: ^3.1.45
+        version: 3.1.45
       '@wp-playground/cli':
         specifier: ^3.1.45
         version: 3.1.45

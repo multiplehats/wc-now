@@ -61,6 +61,7 @@
   },
   "homepage": "https://github.com/multiplehats/wc-now#readme",
   "dependencies": {
+    "@wp-playground/blueprints": "^3.1.45",
     "@wp-playground/cli": "^3.1.45"
   },
   "devDependencies": {

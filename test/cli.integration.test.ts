@@ -33,6 +33,7 @@ async function isServerResponding(url: string): Promise<boolean> {
 	try {
 		const response = await fetch(url, {
 			method: "HEAD",
+			redirect: "manual",
 			signal: AbortSignal.timeout(5000),
 		});
 		return response.ok || response.status === 302; // 302 is redirect to wp-admin
@@ -70,39 +71,36 @@ describe("CLI Integration Tests", () => {
 	it("should start WordPress Playground with WooCommerce defaults", async () => {
 		// Path to our CLI
 		const cliPath = join(__dirname, "../dist/cli/index.js");
+		const mountPath = join(__dirname, "test-plugin");
 
 		// Start the server
-		serverProcess = spawn("node", [cliPath, "server", `--port=${testPort}`], {
-			stdio: ["ignore", "pipe", "pipe"],
-			env: { ...process.env, NODE_ENV: "test" },
-		});
+		serverProcess = spawn(
+			"node",
+			[
+				cliPath,
+				"server",
+				`--port=${testPort}`,
+				`--mount=${mountPath}:/wordpress/wp-content/plugins/test-plugin`,
+			],
+			{
+				stdio: ["ignore", "pipe", "pipe"],
+				env: { ...process.env, NODE_ENV: "test" },
+			},
+		);
 
-		let serverOutput = "";
-		let serverStarted = false;
+		serverUrl = `http://127.0.0.1:${testPort}`;
 
 		// Capture output
 		serverProcess.stdout?.on("data", (data) => {
 			const output = data.toString();
-			serverOutput += output;
 			console.log("[CLI Output]:", output);
 
 			// Check if server has started
-			if (
-				output.includes("Starting") ||
-				output.includes("Server running at") ||
-				output.includes("localhost") ||
-				output.includes("WordPress is running on")
-			) {
-				serverStarted = true;
-				// Extract URL from output if available
-				const urlMatch = output.match(
-					/http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/,
-				);
-				if (urlMatch) {
-					serverUrl = `http://localhost:${urlMatch[1]}`;
-				} else {
-					serverUrl = `http://localhost:${testPort}`;
-				}
+			const urlMatch = output.match(
+				/http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/,
+			);
+			if (urlMatch) {
+				serverUrl = `http://127.0.0.1:${urlMatch[1]}`;
 			}
 		});
 
@@ -110,16 +108,8 @@ describe("CLI Integration Tests", () => {
 			console.error("[CLI Error]:", data.toString());
 		});
 
-		// Wait for server to start
-		await waitFor(async () => serverStarted, 60000, 2000);
-
-		// Give it a bit more time to fully initialize
-		await new Promise((resolve) => setTimeout(resolve, 5000));
-
-		// Verify the server is responding
-		expect(serverUrl).toBeDefined();
-		const isResponding = await isServerResponding(serverUrl);
-		expect(isResponding).toBe(true);
+		// Readiness is the HTTP endpoint, not the wrapper's early startup banner.
+		await waitFor(() => isServerResponding(serverUrl), 90000, 1000);
 
 		// Verify we can access wp-admin (should redirect to login or show admin)
 		const adminUrl = `${serverUrl}/wp-admin/`;
@@ -140,6 +130,14 @@ describe("CLI Integration Tests", () => {
 
 		// Should get a response (either 200 or redirect)
 		expect(wcResponse.status).toBeGreaterThan(0);
+
+		const mountedResponse = await fetch(
+			`${serverUrl}/wp-content/plugins/test-plugin/mounted.txt`,
+		);
+		expect(mountedResponse.status).toBe(200);
+		expect(await mountedResponse.text()).toContain(
+			"wc-now mount forwarding works",
+		);
 	}, 120000); // 2 minute timeout for the entire test
 
 	it("should start with a custom blueprint", async () => {
@@ -178,29 +176,20 @@ describe("CLI Integration Tests", () => {
 			},
 		);
 
-		let serverStarted = false;
-
 		serverProcess.stdout?.on("data", (data) => {
 			const output = data.toString();
 			console.log("[CLI Output]:", output);
-			if (output.includes("Starting") || output.includes("Server running at")) {
-				serverStarted = true;
-			}
 		});
 
 		serverProcess.stderr?.on("data", (data) => {
 			console.error("[CLI Error]:", data.toString());
 		});
 
-		// Wait for server to start
-		await waitFor(async () => serverStarted, 60000, 2000);
-		await new Promise((resolve) => setTimeout(resolve, 5000));
-
-		// Verify server is responding
-		const isResponding = await isServerResponding(
-			`http://localhost:${testPort}`,
+		await waitFor(
+			() => isServerResponding(`http://127.0.0.1:${testPort}`),
+			90000,
+			1000,
 		);
-		expect(isResponding).toBe(true);
 	}, 120000);
 });
 

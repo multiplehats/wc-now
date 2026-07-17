@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { validateBlueprintDeclaration } from "@wp-playground/blueprints";
 import {
 	generateWooCommerceBlueprint,
 	transformWooCommerceProducts,
@@ -36,6 +37,14 @@ describe("Blueprint Generator", () => {
 			),
 		).toBe(true);
 		expect("steps" in blueprint).toBe(false);
+	});
+
+	it("conforms to the official Blueprint v2 schema", async () => {
+		const validation = await validateBlueprintDeclaration(
+			generateWooCommerceBlueprint(),
+		);
+
+		expect(validation).toEqual({ valid: true });
 	});
 
 	it("generates the native v1 format when explicitly requested", () => {

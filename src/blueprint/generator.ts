@@ -959,8 +959,8 @@ function generateWooCommerceBlueprintV2(
 	return {
 		version: 2,
 		$schema: BLUEPRINT_SCHEMA_URL,
-		phpVersion: php,
-		wordpressVersion: wp,
+		phpVersion: php as BlueprintV2["phpVersion"],
+		wordpressVersion: wp as BlueprintV2["wordpressVersion"],
 		applicationOptions: {
 			"wordpress-playground": {
 				landingPage,

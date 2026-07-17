@@ -1,3 +1,5 @@
+import type { BlueprintV2Declaration as PlaygroundBlueprintV2 } from "@wp-playground/blueprints";
+
 // Blueprint types for WordPress Playground
 // Based on https://playground.wordpress.net/blueprint-schema.json
 
@@ -161,7 +163,6 @@ export interface FileResource {
 export type BlueprintVersion = 1 | 2;
 
 export type JsonValue =
-	| null
 	| string
 	| number
 	| boolean
@@ -173,58 +174,11 @@ export interface InlineFileReference {
 	content: string;
 }
 
-export type BlueprintV2DataReference = string | InlineFileReference;
+export type BlueprintV2 = PlaygroundBlueprintV2;
 
-export type BlueprintV2Step =
-	| {
-			step: "runPHP";
-			code: BlueprintV2DataReference;
-			env?: Record<string, string>;
-	  }
-	| {
-			step: "activatePlugin";
-			pluginPath: string;
-			humanReadableName?: string;
-	  }
-	| { step: "setSiteOptions"; options: Record<string, JsonValue> }
-	| { step: "mkdir"; path: string }
-	| { step: "rm"; path: string }
-	| { step: "rmdir"; path: string }
-	| { step: "cp"; fromPath: string; toPath: string }
-	| { step: "mv"; fromPath: string; toPath: string }
-	| {
-			step: "writeFiles";
-			files: Record<string, BlueprintV2DataReference>;
-	  };
-
-export interface BlueprintV2 {
-	version: 2;
-	$schema?: string;
-	blueprintMeta?: Record<string, JsonValue>;
-	applicationOptions?: {
-		"wordpress-playground": {
-			landingPage?: string;
-			login?: boolean | { username: string; password: string };
-			networkAccess?: boolean;
-		};
-	};
-	siteLanguage?: string;
-	siteOptions?: Record<string, JsonValue>;
-	constants?: Record<string, string | number | boolean>;
-	wordpressVersion?: string | Record<string, JsonValue>;
-	phpVersion?: string | Record<string, JsonValue>;
-	activeTheme?: BlueprintV2DataReference | Record<string, JsonValue>;
-	themes?: Array<BlueprintV2DataReference | Record<string, JsonValue>>;
-	plugins?: Array<BlueprintV2DataReference | Record<string, JsonValue>>;
-	muPlugins?: BlueprintV2DataReference[];
-	content?: Record<string, JsonValue>[];
-	media?: Array<BlueprintV2DataReference | Record<string, JsonValue>>;
-	users?: Record<string, JsonValue>[];
-	roles?: Record<string, JsonValue>[];
-	postTypes?: Record<string, JsonValue>;
-	fonts?: Record<string, JsonValue>;
-	additionalStepsAfterExecution?: BlueprintV2Step[];
-}
+export type BlueprintV2Step = NonNullable<
+	BlueprintV2["additionalStepsAfterExecution"]
+>[number];
 
 export type Blueprint = BlueprintV1 | BlueprintV2;
 
