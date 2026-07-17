@@ -1,4 +1,12 @@
-import type { Blueprint, BlueprintStep } from "./types";
+import type {
+	Blueprint,
+	BlueprintV1,
+	BlueprintV1Step,
+	BlueprintV2,
+	BlueprintV2Step,
+	InlineFileReference,
+	JsonValue,
+} from "./types";
 import type { PublicWooCommerceProduct } from "../wc-public-api";
 
 export interface ProductImport {
@@ -32,14 +40,168 @@ export interface ProductImport {
 	}>;
 }
 
-export interface BlueprintGeneratorOptions {
+interface SharedBlueprintGeneratorOptions {
 	siteName?: string;
 	products?: ProductImport[];
 	landingPage?: string;
 	php?: string;
 	wp?: string;
 	additionalPlugins?: string[];
-	additionalSteps?: BlueprintStep[];
+}
+
+export interface BlueprintV1GeneratorOptions
+	extends SharedBlueprintGeneratorOptions {
+	blueprintVersion: 1;
+	additionalSteps?: BlueprintV1Step[];
+}
+
+export interface BlueprintV2GeneratorOptions
+	extends SharedBlueprintGeneratorOptions {
+	blueprintVersion?: 2;
+	additionalSteps?: BlueprintV2Step[];
+}
+
+export type BlueprintGeneratorOptions =
+	| BlueprintV1GeneratorOptions
+	| BlueprintV2GeneratorOptions;
+
+const BLUEPRINT_SCHEMA_URL =
+	"https://playground.wordpress.net/blueprint-schema.json";
+
+const DEBUG_CONFIG_PHP = `<?php
+/**
+ * Debug configuration for development
+ * Using mu-plugin to ensure these are set after wp-config.php
+ */
+
+// Only define constants if they haven't been defined already
+if (!defined('WP_DEBUG')) {
+    define('WP_DEBUG', true);
+}
+
+if (!defined('WP_DEBUG_LOG')) {
+    define('WP_DEBUG_LOG', true);
+}
+
+if (!defined('WP_DEBUG_DISPLAY')) {
+    define('WP_DEBUG_DISPLAY', false);
+}
+
+if (!defined('SCRIPT_DEBUG')) {
+    define('SCRIPT_DEBUG', true);
+}
+
+if (!defined('WP_ENVIRONMENT_TYPE')) {
+    define('WP_ENVIRONMENT_TYPE', 'development');
+}
+
+// Additional debug helpers
+if (WP_DEBUG) {
+    // Ensure error reporting is enabled
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+
+    // Set error log location if not already set
+    if (!ini_get('error_log')) {
+        ini_set('error_log', WP_CONTENT_DIR . '/debug.log');
+    }
+}
+`;
+
+const PLAYGROUND_HELPERS_PHP = `<?php
+/**
+ * WordPress Playground Development Helpers
+ */
+
+// Show admin bar for all users
+add_filter('show_admin_bar', '__return_true');
+
+// Disable update checks to improve performance
+add_filter('automatic_updater_disabled', '__return_true');
+remove_action('init', 'wp_schedule_update_checks');
+
+// Add development notice
+add_action('admin_notices', function() {
+    echo '<div class="notice notice-info"><p>🎮 Running in WordPress Playground with WooCommerce defaults</p></div>';
+});
+
+// Log all errors to debug.log
+if (WP_DEBUG_LOG) {
+    ini_set('log_errors', 1);
+    ini_set('error_log', WP_CONTENT_DIR . '/debug.log');
+}
+`;
+
+const WOOCOMMERCE_SETUP_PHP = `<?php
+// Ensure WooCommerce database tables are created
+require_once '/wordpress/wp-load.php';
+
+// Check if WooCommerce is active
+if (!class_exists('WooCommerce')) {
+    echo 'WooCommerce not found, skipping table creation.';
+    exit(0);
+}
+
+// Get WooCommerce instance
+$woocommerce = WC();
+
+// Install WooCommerce tables if needed
+if (class_exists('WC_Install')) {
+    WC_Install::check_version();
+    WC_Install::install();
+    echo 'WooCommerce tables checked/created.';
+}
+
+// Ensure product taxonomies are registered
+if (function_exists('wc_register_default_taxonomies')) {
+    wc_register_default_taxonomies();
+    echo ' Taxonomies registered.';
+}
+
+// Flush rewrite rules
+flush_rewrite_rules();
+echo ' Ready for products.';
+?>`;
+
+function getWooCommerceSiteOptions(
+	siteName: string,
+): Record<string, JsonValue> {
+	return {
+		blogname: siteName,
+		woocommerce_store_city: "New York",
+		woocommerce_store_address: "123 Main St",
+		woocommerce_store_postcode: "10001",
+		woocommerce_default_country: "US:NY",
+		woocommerce_onboarding_profile: { skipped: true },
+		woocommerce_currency: "USD",
+		woocommerce_weight_unit: "lbs",
+		woocommerce_dimension_unit: "in",
+		woocommerce_allow_tracking: "no",
+		woocommerce_cheque_settings: { enabled: "yes" },
+		woocommerce_cod_settings: { enabled: "yes" },
+		woocommerce_bacs_settings: { enabled: "yes" },
+		woocommerce_calc_taxes: "yes",
+		woocommerce_enable_coupons: "yes",
+		woocommerce_enable_reviews: "yes",
+		woocommerce_enable_review_rating: "yes",
+		woocommerce_manage_stock: "yes",
+		woocommerce_notify_low_stock: "yes",
+		woocommerce_notify_no_stock: "yes",
+		woocommerce_stock_email_recipient: "admin@example.com",
+		woocommerce_notify_low_stock_amount: 2,
+		woocommerce_notify_no_stock_amount: 0,
+		woocommerce_enable_guest_checkout: "yes",
+		woocommerce_enable_checkout_login_reminder: "yes",
+		woocommerce_enable_signup_and_login_from_checkout: "yes",
+		woocommerce_enable_myaccount_registration: "yes",
+		woocommerce_registration_generate_username: "yes",
+		woocommerce_registration_generate_password: "yes",
+	};
+}
+
+function inlinePHP(filename: string, content: string): InlineFileReference {
+	return { filename, content };
 }
 
 // Helper function to escape PHP strings
@@ -256,10 +418,24 @@ echo "Successfully imported $imported_count products with $images_imported image
 ?>`;
 }
 
-// Generate the default WooCommerce blueprint
+export function generateWooCommerceBlueprint(
+	options: BlueprintV1GeneratorOptions,
+): BlueprintV1;
+export function generateWooCommerceBlueprint(
+	options?: BlueprintV2GeneratorOptions,
+): BlueprintV2;
 export function generateWooCommerceBlueprint(
 	options: BlueprintGeneratorOptions = {},
 ): Blueprint {
+	return options.blueprintVersion === 1
+		? generateWooCommerceBlueprintV1(options)
+		: generateWooCommerceBlueprintV2(options);
+}
+
+// Generate the legacy Blueprint v1 format.
+function generateWooCommerceBlueprintV1(
+	options: BlueprintV1GeneratorOptions,
+): BlueprintV1 {
 	const {
 		siteName = "My WooCommerce Store",
 		products = [],
@@ -270,8 +446,8 @@ export function generateWooCommerceBlueprint(
 		additionalSteps = [],
 	} = options;
 
-	const blueprint: Blueprint = {
-		$schema: "https://playground.wordpress.net/blueprint-schema.json",
+	const blueprint: BlueprintV1 = {
+		$schema: BLUEPRINT_SCHEMA_URL,
 		landingPage,
 		login: true,
 		preferredVersions: {
@@ -368,96 +544,13 @@ add_action( 'after_setup_theme', function() {
 			// Configure WooCommerce settings
 			{
 				step: "setSiteOptions",
-				options: {
-					blogname: siteName,
-					woocommerce_store_city: "New York",
-					woocommerce_store_address: "123 Main St",
-					woocommerce_store_postcode: "10001",
-					woocommerce_default_country: "US:NY",
-					woocommerce_onboarding_profile: {
-						skipped: true,
-					},
-					woocommerce_currency: "USD",
-					woocommerce_weight_unit: "lbs",
-					woocommerce_dimension_unit: "in",
-					woocommerce_allow_tracking: "no",
-					woocommerce_cheque_settings: {
-						enabled: "yes",
-					},
-					woocommerce_cod_settings: {
-						enabled: "yes",
-					},
-					woocommerce_bacs_settings: {
-						enabled: "yes",
-					},
-					// Enable tax calculations
-					woocommerce_calc_taxes: "yes",
-					// Enable coupons
-					woocommerce_enable_coupons: "yes",
-					// Enable reviews
-					woocommerce_enable_reviews: "yes",
-					woocommerce_enable_review_rating: "yes",
-					// Stock management
-					woocommerce_manage_stock: "yes",
-					woocommerce_notify_low_stock: "yes",
-					woocommerce_notify_no_stock: "yes",
-					woocommerce_stock_email_recipient: "admin@example.com",
-					woocommerce_notify_low_stock_amount: 2,
-					woocommerce_notify_no_stock_amount: 0,
-					// Checkout options
-					woocommerce_enable_guest_checkout: "yes",
-					woocommerce_enable_checkout_login_reminder: "yes",
-					woocommerce_enable_signup_and_login_from_checkout: "yes",
-					// Account creation
-					woocommerce_enable_myaccount_registration: "yes",
-					woocommerce_registration_generate_username: "yes",
-					woocommerce_registration_generate_password: "yes",
-				},
+				options: getWooCommerceSiteOptions(siteName),
 			},
 			// Enable debug mode for development
 			{
 				step: "writeFile",
 				path: "/wordpress/wp-content/mu-plugins/debug-config.php",
-				data: `<?php
-/**
- * Debug configuration for development
- * Using mu-plugin to ensure these are set after wp-config.php
- */
-
-// Only define constants if they haven't been defined already
-if (!defined('WP_DEBUG')) {
-    define('WP_DEBUG', true);
-}
-
-if (!defined('WP_DEBUG_LOG')) {
-    define('WP_DEBUG_LOG', true);
-}
-
-if (!defined('WP_DEBUG_DISPLAY')) {
-    define('WP_DEBUG_DISPLAY', false);
-}
-
-if (!defined('SCRIPT_DEBUG')) {
-    define('SCRIPT_DEBUG', true);
-}
-
-if (!defined('WP_ENVIRONMENT_TYPE')) {
-    define('WP_ENVIRONMENT_TYPE', 'development');
-}
-
-// Additional debug helpers
-if (WP_DEBUG) {
-    // Ensure error reporting is enabled
-    error_reporting(E_ALL);
-    ini_set('display_errors', 0);
-    ini_set('log_errors', 1);
-
-    // Set error log location if not already set
-    if (!ini_get('error_log')) {
-        ini_set('error_log', WP_CONTENT_DIR . '/debug.log');
-    }
-}
-`,
+				data: DEBUG_CONFIG_PHP,
 			},
 		],
 	};
@@ -465,36 +558,7 @@ if (WP_DEBUG) {
 	// Ensure WooCommerce tables are created
 	blueprint.steps.push({
 		step: "runPHP",
-		code: `<?php
-// Ensure WooCommerce database tables are created
-require_once '/wordpress/wp-load.php';
-
-// Check if WooCommerce is active
-if (!class_exists('WooCommerce')) {
-    echo 'WooCommerce not found, skipping table creation.';
-    exit(0);
-}
-
-// Get WooCommerce instance
-$woocommerce = WC();
-
-// Install WooCommerce tables if needed
-if (class_exists('WC_Install')) {
-    WC_Install::check_version();
-    WC_Install::install();
-    echo 'WooCommerce tables checked/created.';
-}
-
-// Ensure product taxonomies are registered
-if (function_exists('wc_register_default_taxonomies')) {
-    wc_register_default_taxonomies();
-    echo ' Taxonomies registered.';
-}
-
-// Flush rewrite rules
-flush_rewrite_rules();
-echo ' Ready for products.';
-?>`,
+		code: WOOCOMMERCE_SETUP_PHP,
 	});
 
 	// Add product import steps if products are provided
@@ -774,32 +838,160 @@ flush_rewrite_rules();
 	blueprint.steps.push({
 		step: "writeFile",
 		path: "/wordpress/wp-content/mu-plugins/playground-helpers.php",
-		data: `<?php
-/**
- * WordPress Playground Development Helpers
- */
-
-// Show admin bar for all users
-add_filter('show_admin_bar', '__return_true');
-
-// Disable update checks to improve performance
-add_filter('automatic_updater_disabled', '__return_true');
-remove_action('init', 'wp_schedule_update_checks');
-
-// Add development notice
-add_action('admin_notices', function() {
-    echo '<div class="notice notice-info"><p>🎮 Running in WordPress Playground with WooCommerce defaults</p></div>';
-});
-
-// Log all errors to debug.log
-if (WP_DEBUG_LOG) {
-    ini_set('log_errors', 1);
-    ini_set('error_log', WP_CONTENT_DIR . '/debug.log');
-}
-`,
+		data: PLAYGROUND_HELPERS_PHP,
 	});
 
 	return blueprint;
+}
+
+const DEFAULT_SAMPLE_PRODUCTS: ProductImport[] = [
+	{
+		name: "Premium Quality T-Shirt",
+		description:
+			"This premium quality t-shirt is made from 100% organic cotton. Comfortable, durable, and stylish.",
+		short_description: "Comfortable organic cotton t-shirt",
+		price: "24.99",
+		regular_price: "29.99",
+		sale_price: "24.99",
+		sku: "TSHIRT-001",
+		stock_status: "instock",
+		categories: ["Clothing", "T-Shirts"],
+		images: ["https://via.placeholder.com/800x800/4A90E2/FFFFFF?text=T-Shirt"],
+		attributes: [],
+		variations: [],
+	},
+	{
+		name: "Wireless Bluetooth Headphones",
+		description:
+			"Experience crystal-clear audio with these premium wireless Bluetooth headphones. Features noise cancellation and 30-hour battery life.",
+		short_description: "Premium wireless headphones with noise cancellation",
+		price: "119.99",
+		regular_price: "149.99",
+		sale_price: "119.99",
+		sku: "HEADPHONES-001",
+		stock_status: "instock",
+		categories: ["Electronics", "Audio"],
+		images: [
+			"https://via.placeholder.com/800x800/E24A4A/FFFFFF?text=Headphones",
+		],
+		attributes: [],
+		variations: [],
+	},
+	{
+		name: "Organic Coffee Beans - 1kg",
+		description:
+			"Premium organic coffee beans sourced from sustainable farms. Medium roast with notes of chocolate and caramel.",
+		short_description: "Premium organic coffee beans",
+		price: "34.99",
+		regular_price: "34.99",
+		sale_price: "",
+		sku: "COFFEE-001",
+		stock_status: "instock",
+		categories: ["Food & Beverage", "Coffee"],
+		images: ["https://via.placeholder.com/800x800/8B4513/FFFFFF?text=Coffee"],
+		attributes: [],
+		variations: [],
+	},
+	{
+		name: "Yoga Mat - Extra Thick",
+		description:
+			"Professional-grade yoga mat with extra thickness for maximum comfort. Non-slip surface and eco-friendly materials.",
+		short_description: "Extra thick professional yoga mat",
+		price: "39.99",
+		regular_price: "49.99",
+		sale_price: "39.99",
+		sku: "YOGA-MAT-001",
+		stock_status: "instock",
+		categories: ["Sports & Fitness", "Yoga"],
+		images: ["https://via.placeholder.com/800x800/4AE290/FFFFFF?text=Yoga+Mat"],
+		attributes: [],
+		variations: [],
+	},
+	{
+		name: "Stainless Steel Water Bottle",
+		description:
+			"Keep your drinks cold for 24 hours or hot for 12 hours with this premium stainless steel water bottle.",
+		short_description: "Insulated stainless steel water bottle",
+		price: "24.99",
+		regular_price: "24.99",
+		sale_price: "",
+		sku: "BOTTLE-001",
+		stock_status: "instock",
+		categories: ["Home & Kitchen", "Drinkware"],
+		images: [
+			"https://via.placeholder.com/800x800/4AC7E2/FFFFFF?text=Water+Bottle",
+		],
+		attributes: [],
+		variations: [],
+	},
+	{
+		name: "Leather Wallet - RFID Protected",
+		description:
+			"Genuine leather wallet with RFID protection. Multiple card slots and bill compartments.",
+		short_description: "RFID protected leather wallet",
+		price: "49.99",
+		regular_price: "59.99",
+		sale_price: "49.99",
+		sku: "WALLET-001",
+		stock_status: "instock",
+		categories: ["Accessories", "Wallets"],
+		images: ["https://via.placeholder.com/800x800/8B6914/FFFFFF?text=Wallet"],
+		attributes: [],
+		variations: [],
+	},
+];
+
+function generateWooCommerceBlueprintV2(
+	options: BlueprintV2GeneratorOptions,
+): BlueprintV2 {
+	const {
+		siteName = "My WooCommerce Store",
+		products = [],
+		landingPage = "/wp-admin/",
+		php = "8.0",
+		wp = "latest",
+		additionalPlugins = [],
+		additionalSteps = [],
+	} = options;
+	const productsToImport =
+		products.length > 0 ? products : DEFAULT_SAMPLE_PRODUCTS;
+
+	return {
+		version: 2,
+		$schema: BLUEPRINT_SCHEMA_URL,
+		phpVersion: php,
+		wordpressVersion: wp,
+		applicationOptions: {
+			"wordpress-playground": {
+				landingPage,
+				login: true,
+				networkAccess: true,
+			},
+		},
+		plugins: ["woocommerce", ...additionalPlugins],
+		siteOptions: {
+			...getWooCommerceSiteOptions(siteName),
+			permalink_structure: "/%postname%/",
+		},
+		muPlugins: [
+			inlinePHP("debug-config.php", DEBUG_CONFIG_PHP),
+			inlinePHP("playground-helpers.php", PLAYGROUND_HELPERS_PHP),
+		],
+		additionalStepsAfterExecution: [
+			{
+				step: "runPHP",
+				code: inlinePHP("woocommerce-setup.php", WOOCOMMERCE_SETUP_PHP),
+			},
+			{
+				step: "runPHP",
+				code: inlinePHP(
+					products.length > 0 ? "import-products.php" : "sample-products.php",
+					generateProductImportScript(productsToImport),
+				),
+			},
+			...additionalSteps,
+		],
+	};
 }
 
 // Transform WooCommerce API products to our import format

@@ -1,7 +1,7 @@
 // Blueprint types for WordPress Playground
 // Based on https://playground.wordpress.net/blueprint-schema.json
 
-export interface Blueprint {
+export interface BlueprintV1 {
 	$schema?: string;
 	landingPage?: string;
 	preferredVersions?: {
@@ -18,7 +18,7 @@ export interface Blueprint {
 				username?: string;
 				password?: string;
 		  };
-	steps?: BlueprintStep[];
+	steps?: BlueprintV1Step[];
 	constants?: Record<string, string | number | boolean>;
 	plugins?: Array<string | PluginResource>;
 	themes?: Array<string | ThemeResource>;
@@ -39,7 +39,7 @@ export interface ThemeResource {
 	path?: string;
 }
 
-export type BlueprintStep =
+export type BlueprintV1Step =
 	| InstallPluginStep
 	| ActivatePluginStep
 	| InstallThemeStep
@@ -157,3 +157,76 @@ export interface FileResource {
 	url?: string;
 	path?: string;
 }
+
+export type BlueprintVersion = 1 | 2;
+
+export type JsonValue =
+	| null
+	| string
+	| number
+	| boolean
+	| JsonValue[]
+	| { [key: string]: JsonValue };
+
+export interface InlineFileReference {
+	filename: string;
+	content: string;
+}
+
+export type BlueprintV2DataReference = string | InlineFileReference;
+
+export type BlueprintV2Step =
+	| {
+			step: "runPHP";
+			code: BlueprintV2DataReference;
+			env?: Record<string, string>;
+	  }
+	| {
+			step: "activatePlugin";
+			pluginPath: string;
+			humanReadableName?: string;
+	  }
+	| { step: "setSiteOptions"; options: Record<string, JsonValue> }
+	| { step: "mkdir"; path: string }
+	| { step: "rm"; path: string }
+	| { step: "rmdir"; path: string }
+	| { step: "cp"; fromPath: string; toPath: string }
+	| { step: "mv"; fromPath: string; toPath: string }
+	| {
+			step: "writeFiles";
+			files: Record<string, BlueprintV2DataReference>;
+	  };
+
+export interface BlueprintV2 {
+	version: 2;
+	$schema?: string;
+	blueprintMeta?: Record<string, JsonValue>;
+	applicationOptions?: {
+		"wordpress-playground": {
+			landingPage?: string;
+			login?: boolean | { username: string; password: string };
+			networkAccess?: boolean;
+		};
+	};
+	siteLanguage?: string;
+	siteOptions?: Record<string, JsonValue>;
+	constants?: Record<string, string | number | boolean>;
+	wordpressVersion?: string | Record<string, JsonValue>;
+	phpVersion?: string | Record<string, JsonValue>;
+	activeTheme?: BlueprintV2DataReference | Record<string, JsonValue>;
+	themes?: Array<BlueprintV2DataReference | Record<string, JsonValue>>;
+	plugins?: Array<BlueprintV2DataReference | Record<string, JsonValue>>;
+	muPlugins?: BlueprintV2DataReference[];
+	content?: Record<string, JsonValue>[];
+	media?: Array<BlueprintV2DataReference | Record<string, JsonValue>>;
+	users?: Record<string, JsonValue>[];
+	roles?: Record<string, JsonValue>[];
+	postTypes?: Record<string, JsonValue>;
+	fonts?: Record<string, JsonValue>;
+	additionalStepsAfterExecution?: BlueprintV2Step[];
+}
+
+export type Blueprint = BlueprintV1 | BlueprintV2;
+
+// Backwards-compatible alias for the original v1 step type.
+export type BlueprintStep = BlueprintV1Step;

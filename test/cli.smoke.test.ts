@@ -3,14 +3,32 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const cliPath = join(__dirname, "../dist/cli/index.js");
+
+async function runCli(args: string[]) {
+	const child = spawn("node", [cliPath, ...args], {
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	let stdout = "";
+	let stderr = "";
+	child.stdout?.on("data", (data) => {
+		stdout += data.toString();
+	});
+	child.stderr?.on("data", (data) => {
+		stderr += data.toString();
+	});
+	const exitCode = await new Promise<number>((resolve) => {
+		child.on("exit", (code) => resolve(code ?? 0));
+	});
+	return { exitCode, stdout, stderr, combinedOutput: stdout + stderr };
+}
 
 describe("CLI Smoke Tests", () => {
-	const cliPath = join(__dirname, "../dist/cli/index.js");
-
 	it("should have the CLI file built", () => {
 		expect(existsSync(cliPath)).toBe(true);
 	});
@@ -42,6 +60,43 @@ describe("CLI Smoke Tests", () => {
 		expect(output).toContain("--source-url=<url>");
 		expect(output).toContain("--site-name=<name>");
 		expect(output).toContain("Examples:");
+	});
+
+	it("documents Blueprint version selection", async () => {
+		const result = await runCli(["--help"]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toContain("--blueprint-version=<1|2>");
+		expect(result.stdout).toContain("--auto-mount");
+	});
+
+	it("rejects an invalid Blueprint version before starting Playground", async () => {
+		const result = await runCli(["server", "--blueprint-version=3"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.combinedOutput).toContain(
+			"Blueprint version must be 1 or 2; received 3",
+		);
+	});
+
+	it("rejects an explicit version that conflicts with a custom Blueprint", async () => {
+		const testDir = mkdtempSync(join(tmpdir(), "wc-now-smoke-"));
+		try {
+			const blueprintPath = join(testDir, "blueprint.json");
+			writeFileSync(blueprintPath, JSON.stringify({ steps: [] }));
+			const result = await runCli([
+				"server",
+				`--blueprint=${blueprintPath}`,
+				"--blueprint-version=2",
+			]);
+
+			expect(result.exitCode).toBe(1);
+			expect(result.combinedOutput).toContain(
+				"Requested Blueprint v2 conflicts with custom Blueprint v1",
+			);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
 	});
 
 	it("should pass through playground help for server command", async () => {

@@ -6,45 +6,55 @@ import {
 import type { PublicWooCommerceProduct } from "../src/wc-public-api";
 
 describe("Blueprint Generator", () => {
-	it("should generate a default WooCommerce blueprint", () => {
+	it("generates a native Blueprint v2 by default", () => {
 		const blueprint = generateWooCommerceBlueprint();
 
+		expect(blueprint.version).toBe(2);
 		expect(blueprint.$schema).toBe(
 			"https://playground.wordpress.net/blueprint-schema.json",
 		);
-		expect(blueprint.landingPage).toBe("/wp-admin/");
-		expect(blueprint.preferredVersions?.php).toBe("8.0");
-		expect(blueprint.preferredVersions?.wp).toBe("latest");
-		expect(blueprint.features?.networking).toBe(true);
-
-		// Check for WooCommerce plugin
-		const wcPlugin = blueprint.steps?.find(
-			(step) =>
-				step.step === "installPlugin" &&
-				"pluginData" in step &&
-				step.pluginData?.slug === "woocommerce",
+		expect(blueprint.phpVersion).toBe("8.0");
+		expect(blueprint.wordpressVersion).toBe("latest");
+		expect(blueprint.applicationOptions?.["wordpress-playground"]).toEqual({
+			landingPage: "/wp-admin/",
+			login: true,
+			networkAccess: true,
+		});
+		expect(blueprint.plugins).toContain("woocommerce");
+		expect(blueprint.siteOptions?.blogname).toBe("My WooCommerce Store");
+		expect(blueprint.siteOptions?.permalink_structure).toBe("/%postname%/");
+		expect(blueprint.muPlugins).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ filename: "debug-config.php" }),
+				expect.objectContaining({ filename: "playground-helpers.php" }),
+			]),
 		);
-		expect(wcPlugin).toBeDefined();
-
-		// Check for debug constants
-		const debugStep = blueprint.steps?.find(
-			(step) =>
-				step.step === "writeFile" &&
-				"path" in step &&
-				step.path === "/wordpress/wp-content/mu-plugins/debug-config.php",
-		);
-		expect(debugStep).toBeDefined();
+		expect(
+			blueprint.additionalStepsAfterExecution?.some(
+				(step) => step.step === "runPHP",
+			),
+		).toBe(true);
+		expect("steps" in blueprint).toBe(false);
 	});
 
-	it("activates plugins via installPlugin options, not a standalone activatePlugin step", () => {
+	it("generates the native v1 format when explicitly requested", () => {
 		// Regression: the standalone `activatePlugin` step in @wp-playground/cli
 		// v3 unconditionally unlinks a log under /tmp that may not exist in the
 		// Playground VFS, aborting the whole blueprint with
 		// `Could not unlink "/tmp/playground-activate-plugin.log"`. Activation
 		// must ride on installPlugin's `activate` option instead.
 		const blueprint = generateWooCommerceBlueprint({
+			blueprintVersion: 1,
 			additionalPlugins: ["akismet"],
 		});
+
+		expect("version" in blueprint).toBe(false);
+		expect(blueprint.preferredVersions).toEqual({
+			php: "8.0",
+			wp: "latest",
+		});
+		expect(blueprint.features?.networking).toBe(true);
+		expect(blueprint.phpExtensionBundles).toContain("kitchen-sink");
 
 		const activateSteps = blueprint.steps?.filter(
 			(step) => step.step === "activatePlugin",
@@ -73,39 +83,44 @@ describe("Blueprint Generator", () => {
 		).toBe(true);
 	});
 
-	it("should generate blueprint with custom options", () => {
+	it("maps custom options and v2 steps into native v2 fields", () => {
+		const extraStep = {
+			step: "runPHP" as const,
+			code: { filename: "extra.php", content: "<?php echo 'extra';" },
+		};
 		const blueprint = generateWooCommerceBlueprint({
 			siteName: "Test Store",
-			php: "7.4",
-			wp: "6.3",
+			php: "8.3",
+			wp: "6.8",
 			additionalPlugins: ["akismet"],
-			landingPage: "/wp-admin/plugins.php",
+			landingPage: "/shop/",
+			additionalSteps: [extraStep],
 		});
 
-		expect(blueprint.preferredVersions?.php).toBe("7.4");
-		expect(blueprint.preferredVersions?.wp).toBe("6.3");
-		expect(blueprint.landingPage).toBe("/wp-admin/plugins.php");
-
-		// Check site name in options
-		const siteOptionsStep = blueprint.steps?.find(
-			(step) => step.step === "setSiteOptions",
-		);
-		expect(siteOptionsStep).toBeDefined();
-		if (siteOptionsStep && "options" in siteOptionsStep) {
-			expect(siteOptionsStep.options.blogname).toBe("Test Store");
-		}
-
-		// Check additional plugin
-		const akismetPlugin = blueprint.steps?.find(
-			(step) =>
-				step.step === "installPlugin" &&
-				"pluginData" in step &&
-				step.pluginData?.slug === "akismet",
-		);
-		expect(akismetPlugin).toBeDefined();
+		expect(blueprint.phpVersion).toBe("8.3");
+		expect(blueprint.wordpressVersion).toBe("6.8");
+		expect(
+			blueprint.applicationOptions?.["wordpress-playground"].landingPage,
+		).toBe("/shop/");
+		expect(blueprint.plugins).toEqual(["woocommerce", "akismet"]);
+		expect(blueprint.siteOptions?.blogname).toBe("Test Store");
+		expect(blueprint.additionalStepsAfterExecution).toContain(extraStep);
 	});
 
-	it("should include product import steps when products are provided", () => {
+	it("activates v2 plugins declaratively without standalone steps", () => {
+		const blueprint = generateWooCommerceBlueprint({
+			additionalPlugins: ["akismet"],
+		});
+
+		expect(blueprint.plugins).toEqual(["woocommerce", "akismet"]);
+		expect(
+			blueprint.additionalStepsAfterExecution?.filter(
+				(step) => step.step === "activatePlugin",
+			),
+		).toHaveLength(0);
+	});
+
+	it("includes product import PHP when products are provided", () => {
 		const products = [
 			{
 				name: "Test Product",
@@ -124,21 +139,13 @@ describe("Blueprint Generator", () => {
 		];
 
 		const blueprint = generateWooCommerceBlueprint({ products });
-
-		// Should have product import steps instead of default WXR import
-		const importProductsStep = blueprint.steps?.find(
+		const importProductsStep = blueprint.additionalStepsAfterExecution?.find(
 			(step) =>
-				step.step === "writeFile" &&
-				"path" in step &&
-				step.path === "/wordpress/wp-content/mu-plugins/import-products.php",
+				step.step === "runPHP" &&
+				typeof step.code === "object" &&
+				step.code.filename === "import-products.php",
 		);
 		expect(importProductsStep).toBeDefined();
-
-		// Should not have default WXR import
-		const wxrImportStep = blueprint.steps?.find(
-			(step) => step.step === "importWxr",
-		);
-		expect(wxrImportStep).toBeUndefined();
 	});
 
 	it("should transform WooCommerce API products correctly", () => {

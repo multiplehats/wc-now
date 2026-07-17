@@ -8,9 +8,11 @@ import { randomBytes } from "node:crypto";
 import {
 	generateWooCommerceBlueprint,
 	transformWooCommerceProducts,
+	type ProductImport,
 } from "../blueprint/generator";
+import { mergeBlueprints, resolveBlueprintVersion } from "../blueprint/merge";
 import { WCStoreApiClient } from "../wc-public-api";
-import type { Blueprint } from "../blueprint/types";
+import type { Blueprint, BlueprintVersion } from "../blueprint/types";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,8 +40,9 @@ Additional Options:
   --port=<number>        Port to run the server on (default: 9400)
   --php=<version>        PHP version to use (default: 8.0)
   --wp=<version>         WordPress version to use (default: latest)
+  --blueprint-version=<1|2>  Generated Blueprint version (default: 2; custom files auto-detected)
   --mount=<paths>        Mount directories (format: /host/path:/vfs/path)
-  --autoMount            Automatically mount the current directory as a plugin/theme
+  --auto-mount           Automatically mount the current directory as a plugin/theme
 
 All other options are passed through to wp-playground.
 
@@ -51,7 +54,7 @@ Examples:
   npx wc-now start --mount=/local/plugin:/wordpress/wp-content/plugins/my-plugin
 
   # Run from within a plugin directory:
-  cd my-plugin && npx wc-now start --autoMount
+  cd my-plugin && npx wc-now start --auto-mount
 `);
 	process.exit(0);
 }
@@ -80,7 +83,7 @@ async function main() {
 		let phpVersion = "8.0";
 		let wpVersion = "latest";
 		let autoMount = false;
-		const mounts: string[] = [];
+		let requestedBlueprintVersion: BlueprintVersion | undefined;
 
 		const playgroundArgs: string[] = [command];
 
@@ -102,8 +105,15 @@ async function main() {
 			} else if (arg.startsWith("--wp=")) {
 				wpVersion = arg.split("=")[1];
 				playgroundArgs.push(arg);
+			} else if (arg.startsWith("--blueprint-version=")) {
+				const value = arg.split("=")[1];
+				if (value !== "1" && value !== "2") {
+					throw new Error(
+						`Blueprint version must be 1 or 2; received ${value}`,
+					);
+				}
+				requestedBlueprintVersion = Number(value) as BlueprintVersion;
 			} else if (arg.startsWith("--mount=")) {
-				mounts.push(arg.split("=")[1]);
 				playgroundArgs.push(arg);
 			} else if (arg === "--autoMount" || arg === "--auto-mount") {
 				autoMount = true;
@@ -118,12 +128,39 @@ async function main() {
 			}
 		}
 
-		// Generate our default blueprint
-		let blueprint = generateWooCommerceBlueprint({
-			siteName,
-			php: phpVersion,
-			wp: wpVersion,
-		});
+		let customBlueprint: Blueprint | undefined;
+		if (customBlueprintPath) {
+			const resolvedPath = resolve(customBlueprintPath);
+			if (!existsSync(resolvedPath)) {
+				console.error(`❌ Blueprint file not found: ${customBlueprintPath}`);
+				process.exit(1);
+			}
+			customBlueprint = JSON.parse(readFileSync(resolvedPath, "utf-8"));
+		}
+
+		const blueprintVersion = resolveBlueprintVersion(
+			customBlueprint,
+			requestedBlueprintVersion,
+		);
+		const generateBlueprint = (products: ProductImport[] = []) =>
+			blueprintVersion === 1
+				? generateWooCommerceBlueprint({
+						blueprintVersion: 1,
+						siteName,
+						products,
+						php: phpVersion,
+						wp: wpVersion,
+					})
+				: generateWooCommerceBlueprint({
+						blueprintVersion: 2,
+						siteName,
+						products,
+						php: phpVersion,
+						wp: wpVersion,
+					});
+
+		// Generate our default blueprint in the selected format.
+		let blueprint: Blueprint = generateBlueprint();
 
 		// If source URL is provided, fetch products
 		if (sourceUrl) {
@@ -137,12 +174,7 @@ async function main() {
 					console.log(`✅ Found ${products.length} products to import`);
 
 					// Regenerate blueprint with products
-					blueprint = generateWooCommerceBlueprint({
-						siteName,
-						products,
-						php: phpVersion,
-						wp: wpVersion,
-					});
+					blueprint = generateBlueprint(products);
 				} else {
 					console.log("⚠️  No products found, using default sample data");
 				}
@@ -156,19 +188,8 @@ async function main() {
 		}
 
 		// If custom blueprint is provided, merge it
-		if (customBlueprintPath) {
-			const resolvedPath = resolve(customBlueprintPath);
-			if (!existsSync(resolvedPath)) {
-				console.error(`❌ Blueprint file not found: ${customBlueprintPath}`);
-				process.exit(1);
-			}
-
+		if (customBlueprint && customBlueprintPath) {
 			console.log(`📄 Merging custom blueprint from ${customBlueprintPath}...`);
-			const customBlueprint: Blueprint = JSON.parse(
-				readFileSync(resolvedPath, "utf-8"),
-			);
-
-			// Merge blueprints (custom overrides defaults)
 			blueprint = mergeBlueprints(blueprint, customBlueprint);
 		}
 
@@ -213,9 +234,13 @@ async function main() {
 		);
 
 		// Spawn wp-playground with our arguments
-		const child = spawn(process.execPath, [playgroundCliPath, ...playgroundArgs], {
-			stdio: "inherit",
-		});
+		const child = spawn(
+			process.execPath,
+			[playgroundCliPath, ...playgroundArgs],
+			{
+				stdio: "inherit",
+			},
+		);
 
 		// Clean up on exit
 		child.on("exit", async (code) => {
@@ -242,77 +267,6 @@ async function main() {
 		console.error("❌ Error:", error);
 		process.exit(1);
 	}
-}
-
-// Helper function to merge blueprints
-function mergeBlueprints(base: Blueprint, custom: Blueprint): Blueprint {
-	const merged: Blueprint = { ...base };
-
-	// Simple merge for top-level properties
-	if (custom.$schema) merged.$schema = custom.$schema;
-	if (custom.landingPage) merged.landingPage = custom.landingPage;
-
-	// Merge preferredVersions
-	if (custom.preferredVersions) {
-		merged.preferredVersions = {
-			...base.preferredVersions,
-			...custom.preferredVersions,
-		};
-	}
-
-	// Merge phpExtensionBundles
-	if (custom.phpExtensionBundles) {
-		merged.phpExtensionBundles = [
-			...(base.phpExtensionBundles || []),
-			...custom.phpExtensionBundles,
-		].filter((v, i, a) => a.indexOf(v) === i); // Remove duplicates
-	}
-
-	// Merge features
-	if (custom.features) {
-		merged.features = {
-			...base.features,
-			...custom.features,
-		};
-	}
-
-	// Override login
-	if (custom.login !== undefined) {
-		merged.login = custom.login;
-	}
-
-	// Merge plugins
-	if (custom.plugins) {
-		merged.plugins = [...(base.plugins || []), ...custom.plugins];
-	}
-
-	// Merge themes
-	if (custom.themes) {
-		merged.themes = [...(base.themes || []), ...custom.themes];
-	}
-
-	// Merge siteOptions
-	if (custom.siteOptions) {
-		merged.siteOptions = {
-			...base.siteOptions,
-			...custom.siteOptions,
-		};
-	}
-
-	// Merge constants
-	if (custom.constants) {
-		merged.constants = {
-			...base.constants,
-			...custom.constants,
-		};
-	}
-
-	// Append steps
-	if (custom.steps) {
-		merged.steps = [...(base.steps || []), ...custom.steps];
-	}
-
-	return merged;
 }
 
 // Run the CLI
