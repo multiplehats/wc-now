@@ -107,10 +107,12 @@ async function main() {
 				playgroundArgs.push(arg);
 			} else if (arg === "--autoMount" || arg === "--auto-mount") {
 				autoMount = true;
-				// Only pass through for 'server' command; 'start' auto-mounts by default
-				if (command === "server") {
-					playgroundArgs.push("--autoMount");
-				}
+				// Forward the flag the WordPress Playground CLI actually
+				// recognizes (kebab-case `--auto-mount`). `start` already
+				// auto-mounts the current directory by default, but passing it
+				// explicitly is harmless there and is what makes `server`
+				// (low-level, no auto-mount by default) mount the cwd as intended.
+				playgroundArgs.push("--auto-mount");
 			} else {
 				playgroundArgs.push(arg);
 			}

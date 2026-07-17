@@ -1,7 +1,7 @@
 {
   "name": "wc-now",
   "version": "0.2.2",
-  "description": "A playground for WordPress and WooCommerce - extends wp-now with WooCommerce defaults and product cloning",
+  "description": "A playground for WordPress and WooCommerce - extends the WordPress Playground CLI with WooCommerce defaults and product cloning",
   "type": "module",
   "bin": {
     "wc-now": "./dist/cli/index.js"
@@ -46,7 +46,7 @@
     "playground",
     "development",
     "testing",
-    "wp-now",
+    "wp-playground",
     "ecommerce",
     "local-development"
   ],
